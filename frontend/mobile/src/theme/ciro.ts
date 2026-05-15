@@ -1,0 +1,52 @@
+/** CIRO / Aegis — refined dashboard + dark orchestration */
+
+export const ciro = {
+  ink: "#0c1222",
+  inkSoft: "#5c6b8a",
+  inkMuted: "#8b9bb8",
+  /** App backgrounds — cool slate with depth */
+  canvas: "#e8edf5",
+  canvasMuted: "#dfe6f2",
+  background: "#e8edf5",
+  /** Surfaces */
+  card: "#ffffff",
+  cardTint: "#f8faff",
+  sky: "#dbeafe",
+  skyDeep: "#1d4ed8",
+  sage: "#ecfdf5",
+  sageDeep: "#047857",
+  mint: "#a7f3d0",
+  mintDark: "#14532d",
+  tealSoft: "#ccfbf1",
+  tealDeep: "#0f766e",
+  /** Brand accents */
+  primary: "#0891b2",
+  primaryDark: "#0e7490",
+  primaryMuted: "#67e8f9",
+  accentBlue: "#3b82f6",
+  accentViolet: "#6366f1",
+  alert: "#e11d48",
+  alertDeep: "#be123c",
+  amber: "#f59e0b",
+  amberDeep: "#c2410c",
+  warnSurface: "#fffbeb",
+  border: "#c8d3e6",
+  borderSoft: "#e3e9f4",
+  muted: "#eef2f9",
+  mintGradStart: "#34d399",
+  mintGradEnd: "#2dd4bf",
+  accentGreen: "#10b981",
+  accentGreenSoft: "#d1fae5",
+  /** Hero / KPI emphasis */
+  heroGradStart: "#ecfeff",
+  heroGradEnd: "#f8fafc",
+  heroAccent: "#06b6d4",
+  /** Dark orchestration */
+  darkBg: "#050810",
+  darkCard: "#0c121f",
+  darkBorder: "#1e293b",
+  neonCyan: "#22d3ee",
+  neonLime: "#a3e635",
+  neonRed: "#fb7185",
+  neonBlue: "#38bdf8",
+} as const;

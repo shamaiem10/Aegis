@@ -1,0 +1,11 @@
+# Monorepo (web: React + Vite / TanStack Start; mobile: Expo)
+.DS_Store
+
+# Mobile (Expo) — parent-level ignores (see also mobile/.gitignore)
+mobile/.expo/
+mobile/web-build/
+mobile/expo-env.d.ts
+mobile/.metro-health-check*
+mobile/ios/
+mobile/android/
+mobile/.kotlin/

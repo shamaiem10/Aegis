@@ -1,0 +1,11 @@
+.env
+.env.local
+*.pem
+# Service account keys (Firebase / GCP) — never commit
+firebase-adminsdk-*.json
+*-firebase-adminsdk-*.json
+service-account*.json
+**/secrets/
+
+# Local API fallback caches
+.cache/

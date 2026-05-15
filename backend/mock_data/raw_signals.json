@@ -1,0 +1,62 @@
+[
+  {
+    "id": "sns_khi_01",
+    "source": "social_stream",
+    "kind": "social",
+    "text": "Lyari bund showing stress; floodwater entering streets near Chakiwara.",
+    "lat": 24.868,
+    "lon": 66.998,
+    "region": "Karachi South",
+    "severity_hint": 7,
+    "recorded_at": "2026-05-13T04:10:00Z",
+    "payload": { "lang": "en", "trust": 0.62 }
+  },
+  {
+    "id": "sms_khi_02",
+    "source": "sms_gate",
+    "kind": "official",
+    "text": "NDMA relay: District South requests high-water rescue boats near Lyari corridor.",
+    "lat": 24.876,
+    "lon": 67.004,
+    "region": "Karachi South",
+    "severity_hint": 8,
+    "recorded_at": "2026-05-13T04:18:00Z",
+    "payload": { "relay": "NDMA" }
+  },
+  {
+    "id": "iot_khi_03",
+    "source": "sensor_mesh",
+    "kind": "sensor",
+    "text": "Hydrology sensor bank A3: water level +2.1m vs baseline in 6h window.",
+    "lat": 24.855,
+    "lon": 67.01,
+    "region": "Karachi South",
+    "severity_hint": 6,
+    "recorded_at": "2026-05-13T03:50:00Z",
+    "payload": { "reading_mm": 2100 }
+  },
+  {
+    "id": "nw_lhr_01",
+    "source": "news_wire",
+    "kind": "news",
+    "text": "Lahore Ring Road segment closed after protest flashpoint; police advise alternate routes.",
+    "lat": 31.52,
+    "lon": 74.35,
+    "region": "Lahore Ring Road",
+    "severity_hint": 5,
+    "recorded_at": "2026-05-13T02:30:00Z",
+    "payload": { "publisher": "wire" }
+  },
+  {
+    "id": "soc_lhr_02",
+    "source": "social_stream",
+    "kind": "social",
+    "text": "Heavy shelling reported near Ring Road GT Road interchange, avoid area.",
+    "lat": 31.525,
+    "lon": 74.355,
+    "region": "Lahore",
+    "severity_hint": 7,
+    "recorded_at": "2026-05-13T02:45:00Z",
+    "payload": {}
+  }
+]

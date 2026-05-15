@@ -1,0 +1,114 @@
+{
+  "units": [
+    {
+      "resource_id": "boat_alpha",
+      "name": "Inland Rescue Boats — Lyari basin",
+      "kind": "rescue_water",
+      "quantity_available": 8,
+      "lat": 24.87,
+      "lon": 66.995,
+      "tags": ["flood", "all"],
+      "min_tier": 1
+    },
+    {
+      "resource_id": "ems_north_khi",
+      "name": "EMS Rapid Response Karachi North",
+      "kind": "medical",
+      "quantity_available": 12,
+      "lat": 24.93,
+      "lon": 67.085,
+      "tags": ["flood", "fire", "heatwave", "accident", "civil_unrest", "earthquake", "disease_outbreak", "infrastructure", "power_outage", "all"],
+      "min_tier": 1
+    },
+    {
+      "resource_id": "shelter_khi_expo",
+      "name": "Expo Centre shelter batch",
+      "kind": "shelter",
+      "quantity_available": 2400,
+      "lat": 24.907,
+      "lon": 67.084,
+      "tags": ["flood", "earthquake", "all"],
+      "min_tier": 1
+    },
+    {
+      "resource_id": "riot_lane_lhr",
+      "name": "Riot control & negotiator cell Lahore",
+      "kind": "security",
+      "quantity_available": 60,
+      "lat": 31.52,
+      "lon": 74.36,
+      "tags": ["civil_unrest", "fire", "infrastructure", "all"],
+      "min_tier": 1
+    },
+    {
+      "resource_id": "isb_flood_task_alpha",
+      "name": "Islamabad Flood / Swift-water task force (Margalla detachment)",
+      "kind": "rescue_water",
+      "quantity_available": 14,
+      "lat": 33.721,
+      "lon": 73.043,
+      "tags": ["flood", "infrastructure", "all"],
+      "min_tier": 1
+    },
+    {
+      "resource_id": "isb_traffic_cell",
+      "name": "ICT Police — Traffic & corridor control",
+      "kind": "security",
+      "quantity_available": 40,
+      "lat": 33.6935,
+      "lon": 73.0652,
+      "tags": ["flood", "accident", "civil_unrest", "infrastructure", "all"],
+      "min_tier": 1
+    },
+    {
+      "resource_id": "isb_ems_central",
+      "name": "PIMS-linked EMS staging — District Central",
+      "kind": "medical",
+      "quantity_available": 18,
+      "lat": 33.7069,
+      "lon": 73.0557,
+      "tags": ["flood", "fire", "heatwave", "accident", "earthquake", "disease_outbreak", "infrastructure", "all"],
+      "min_tier": 1
+    },
+    {
+      "resource_id": "isb_cooling_center",
+      "name": "DWO cooling / shade shelters + ORS pallets",
+      "kind": "shelter",
+      "quantity_available": 800,
+      "lat": 33.658,
+      "lon": 73.01,
+      "tags": ["heatwave", "flood", "power_outage", "all"],
+      "min_tier": 1
+    },
+    {
+      "resource_id": "isb_water_utilitycrew",
+      "name": "CDA bulk-water & mains repair crews",
+      "kind": "utility",
+      "quantity_available": 10,
+      "lat": 33.684,
+      "lon": 73.032,
+      "tags": ["infrastructure", "flood", "power_outage", "all"],
+      "min_tier": 1
+    },
+    {
+      "resource_id": "isb_mobile_gens_alpha",
+      "name": "Field mobile generator + line truck platoon",
+      "kind": "power_mobile",
+      "quantity_available": 20,
+      "lat": 33.688,
+      "lon": 73.038,
+      "tags": ["power_outage", "heatwave", "infrastructure", "all"],
+      "min_tier": 1
+    },
+    {
+      "resource_id": "ndma_uas_cell",
+      "name": "NDMA reconnaissance UAS cell — corridor overwatch",
+      "kind": "drone",
+      "quantity_available": 6,
+      "lat": 33.701,
+      "lon": 73.052,
+      "tags": ["flood", "earthquake", "accident", "power_outage", "civil_unrest", "all"],
+      "min_tier": 1
+    }
+  ]
+}

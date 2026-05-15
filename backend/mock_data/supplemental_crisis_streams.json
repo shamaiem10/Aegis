@@ -1,0 +1,114 @@
+[
+  {
+    "id": "soc_g10_flood_01",
+    "source": "social_x_mock",
+    "kind": "social",
+    "text": "G-10 Markaz street flooded knee deep cars stuck islamabad monsoon",
+    "lat": 33.6792,
+    "lon": 73.0284,
+    "region": "Islamabad G-10",
+    "severity_hint": 8,
+    "recorded_at": "2026-05-14T12:04:00+00:00",
+    "payload": {
+      "incident_group": "isb_hydro",
+      "mention_velocity_per_hr": 38,
+      "geolocation_quality": "cell_tower"
+    }
+  },
+  {
+    "id": "weather_capital_warn_01",
+    "source": "open_meteo_alert_stub",
+    "kind": "weather_alert",
+    "text": "Capital territory heavy rainfall warning next 6 hours landslide risk",
+    "lat": 33.6842,
+    "lon": 73.0478,
+    "region": "Islamabad Capital Territory",
+    "severity_hint": 7,
+    "recorded_at": "2026-05-14T12:06:00+00:00",
+    "payload": { "incident_group": "isb_hydro", "official_weight": 0.85 }
+  },
+  {
+    "id": "traffic_g10_spike",
+    "source": "traffic_maps_mock",
+    "kind": "traffic",
+    "text": "Severe congestion spike G10 Kashmir Highway feeder ramps closed",
+    "lat": 33.6801,
+    "lon": 73.0299,
+    "region": "Islamabad G-10",
+    "severity_hint": 6,
+    "recorded_at": "2026-05-14T12:07:00+00:00",
+    "payload": { "incident_group": "isb_hydro", "congestion_index": 0.91 }
+  },
+  {
+    "id": "ems_disp_g10_1122_spike",
+    "source": "emergency_dispatch_mock",
+    "kind": "emergency_call",
+    "text": "Seven duplicate 1122 calls standing water G10 Markaz",
+    "lat": 33.6788,
+    "lon": 73.0275,
+    "region": "Islamabad",
+    "severity_hint": 8,
+    "recorded_at": "2026-05-14T12:08:00+00:00",
+    "payload": { "incident_group": "isb_hydro", "call_rate_15min": 7 }
+  },
+  {
+    "id": "field_rpt_water_main",
+    "source": "field_report_municipal",
+    "kind": "field_report",
+    "text": "Field supervisor: large diameter water main burst may be masquerading as flooding",
+    "lat": 33.6795,
+    "lon": 73.0289,
+    "region": "Islamabad G-10",
+    "severity_hint": 6,
+    "recorded_at": "2026-05-14T12:18:00+00:00",
+    "payload": {
+      "incident_group": "isb_hydro",
+      "hypothesis": "water_main_burst",
+      "verified": false
+    }
+  },
+  {
+    "id": "sensor_g10_depth_stub",
+    "source": "iot_flood_sensor_mock",
+    "kind": "sensor",
+    "text": "Ultrasonic gauge reads 12cm depth nominal drainage active",
+    "lat": 33.6790,
+    "lon": 73.0280,
+    "region": "Islamabad G-10",
+    "severity_hint": 3,
+    "recorded_at": "2026-05-14T12:09:00+00:00",
+    "payload": {
+      "incident_group": "isb_hydro",
+      "sensor_stale_hours": 2.5,
+      "contradicts_social_flood": true
+    }
+  },
+  {
+    "id": "soc_i9_heat_01",
+    "source": "citizen_complaint_portal",
+    "kind": "social",
+    "text": "I-9 sector heat emergency elderly no power fans community hall overcrowded",
+    "lat": 33.6514,
+    "lon": 72.9861,
+    "region": "Islamabad I-9",
+    "severity_hint": 7,
+    "recorded_at": "2026-05-14T12:22:00+00:00",
+    "payload": {
+      "incident_group": "isb_heat",
+      "vulnerable_population_flag": true,
+      "mention_velocity_per_hr": 12
+    }
+  },
+  {
+    "id": "ems_heat_disp",
+    "source": "emergency_dispatch_mock",
+    "kind": "emergency_call",
+    "text": "Multiple heat exposure calls I-9 grid sag earlier",
+    "lat": 33.6520,
+    "lon": 72.9855,
+    "region": "Islamabad",
+    "severity_hint": 7,
+    "recorded_at": "2026-05-14T12:24:00+00:00",
+    "payload": { "incident_group": "isb_heat", "call_rate_15min": 4 }
+  }
+]

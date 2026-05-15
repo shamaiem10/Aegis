@@ -1,0 +1,11 @@
+﻿# secrets
+firebase-service-account.json
+**/firebase-service-account.json
+
+# python env
+backend/.venv/
+**/.venv/
+
+# node
+node_modules
+.env

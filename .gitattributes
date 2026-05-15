@@ -1,0 +1,17 @@
+# Normalize text line endings for GitHub / CI (LF in repo).
+* text=auto eol=lf
+
+# Windows shell scripts keep CRLF if present
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary

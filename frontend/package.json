@@ -1,0 +1,16 @@
+{
+  "name": "aegis-frontend",
+  "private": true,
+  "scripts": {
+    "dev:web": "npm run dev --prefix web",
+    "build:web": "npm run build --prefix web",
+    "preview:web": "npm run preview --prefix web",
+    "lint:web": "npm run lint --prefix web",
+    "format:web": "npm run format --prefix web",
+    "dev:mobile": "npm run start --prefix mobile",
+    "dev:mobile:tunnel": "npm run start:tunnel --prefix mobile",
+    "dev:mobile:web": "npm run web --prefix mobile",
+    "android": "npm run android --prefix mobile",
+    "ios": "npm run ios --prefix mobile"
+  }
+}

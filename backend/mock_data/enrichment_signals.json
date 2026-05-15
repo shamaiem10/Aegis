@@ -1,0 +1,58 @@
+[
+  {
+    "id": "vuln_capital_heat_aoi",
+    "source": "historical_vulnerability_map_stub",
+    "kind": "historical_vulnerability",
+    "text": "Capital territory census mesh shows elevated heat-vulnerability index I-8 I-9 I-10 low AC penetration aging stock",
+    "lat": 33.655,
+    "lon": 72.99,
+    "region": "Islamabad low-income mesh",
+    "severity_hint": 4,
+    "recorded_at": "2026-05-14T11:00:00+00:00",
+    "payload": {
+      "incident_group": "isb_heat",
+      "vulnerability_percentile": 88,
+      "layer": "demographic_heat_stress_v1"
+    }
+  },
+  {
+    "id": "vuln_lyari_flood_hist",
+    "source": "historical_vulnerability_map_stub",
+    "kind": "historical_vulnerability",
+    "text": "Lyari basin historical inundation recurrence 2010-2020 high humanitarian exposure",
+    "lat": 24.865,
+    "lon": 66.995,
+    "region": "Karachi Lyari",
+    "severity_hint": 5,
+    "recorded_at": "2026-05-14T10:30:00+00:00",
+    "payload": { "vulnerability_percentile": 82, "layer": "flood_return_interval_legacy" }
+  },
+  {
+    "id": "metro_isb_orange_line_delay",
+    "source": "public_transport_feed_mock",
+    "kind": "public_transport",
+    "text": "Metrobus Orange line 12-18 min delays Faizabad to NUST sector crowding platform B",
+    "lat": 33.696,
+    "lon": 73.047,
+    "region": "Islamabad metrobus",
+    "severity_hint": 3,
+    "recorded_at": "2026-05-14T12:15:00+00:00",
+    "payload": {
+      "incident_group": "isb_hydro",
+      "delay_minutes": 15,
+      "route": "orange_line"
+    }
+  },
+  {
+    "id": "metro_lhr_brt_glitch",
+    "source": "public_transport_feed_mock",
+    "kind": "public_transport",
+    "text": "Lahore BRT transponder fault Kalma Chowk segment single-track operation",
+    "lat": 31.503,
+    "lon": 74.348,
+    "region": "Lahore BRT",
+    "severity_hint": 4,
+    "recorded_at": "2026-05-14T09:45:00+00:00",
+    "payload": { "delay_minutes": 22, "route": "brt_red" }
+  }
+]
