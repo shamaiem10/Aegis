@@ -15,7 +15,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 
-import { getDemoModeResolved, listCrises } from "../api/client";
+import { useCrisisStream } from "../../lib/firestore/hooks";
 import type { CrisisDossierApi } from "../api/types";
 import type { RootStackParamList } from "../navigation/types";
 import { getCrisisTypeConfig, crisisThemeHex } from "../constants/crisisTypes";
@@ -27,31 +27,9 @@ type Nav = NativeStackNavigationProp<RootStackParamList, "Crises">;
 export function CrisesScreen({ navigation }: { navigation: Nav }) {
   const { tc, r, contentWrap } = useAegisUi();
   const schemeDark = useColorScheme() === "dark";
-  const [rows, setRows] = useState<CrisisDossierApi[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-  const [demo, setDemo] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setErr(null);
-    setDemo(await getDemoModeResolved());
-    try {
-      const data = await listCrises({ limit: 80 });
-      setRows([...data].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)));
-    } catch (e) {
-      setErr(String((e as Error).message));
-      setRows([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load]),
-  );
+  const { data: unsortedRows, loading, usingFallback: demo } = useCrisisStream();
+  const rows = useMemo(() => [...unsortedRows].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)), [unsortedRows]);
+  const err = null;
 
   const maxAqi = useMemo(() => {
     let m = 0;
@@ -162,7 +140,7 @@ export function CrisesScreen({ navigation }: { navigation: Nav }) {
         data={rows}
         keyExtractor={(item) => item.crisis_id}
         refreshControl={
-          <RefreshControl refreshing={loading && rows.length > 0} onRefresh={() => load()} tintColor={tc.primary} />
+          <RefreshControl refreshing={false} onRefresh={() => {}} tintColor={tc.primary} />
         }
         renderItem={({ item }) => {
           const ct = (item.meta?.crisis_type as string) ?? item.classification.category;

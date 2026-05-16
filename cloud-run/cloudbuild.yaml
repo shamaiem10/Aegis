@@ -1,0 +1,37 @@
+steps:
+  # Step 1: Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/aegis-496207/crisis-api-gateway', '.']
+
+  # Step 2: Push the container image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/aegis-496207/crisis-api-gateway']
+
+  # Step 3: Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'crisis-api-gateway'
+      - '--image'
+      - 'gcr.io/aegis-496207/crisis-api-gateway'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--service-account'
+      - 'firebase-adminsdk-fbsvc@aegis-496207.iam.gserviceaccount.com'
+      - '--memory'
+      - '2Gi'
+      - '--cpu'
+      - '2'
+      - '--max-instances'
+      - '10'
+      - '--min-instances'
+      - '1'
+      - '--no-allow-unauthenticated'
+      - '--set-secrets=OPENAQ_API_KEY=OPENAQ_API_KEY:latest,IQAIR_API_KEY=IQAIR_API_KEY:latest,HERE_API_KEY=HERE_API_KEY:latest,TWITTER_API_KEY=TWITTER_API_KEY:latest,REDDIT_CLIENT_ID=REDDIT_CLIENT_ID:latest,REDDIT_CLIENT_SECRET=REDDIT_CLIENT_SECRET:latest,TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,TWILIO_FROM_NUMBER=TWILIO_FROM_NUMBER:latest,SENDGRID_API_KEY=SENDGRID_API_KEY:latest,GOOGLE_MAPS_SERVER_KEY=GOOGLE_MAPS_SERVER_KEY:latest'
+
+images:
+  - 'gcr.io/aegis-496207/crisis-api-gateway'

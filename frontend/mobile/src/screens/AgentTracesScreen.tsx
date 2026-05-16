@@ -5,6 +5,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import { Card, PageHeader } from "../components/aegis/AppShell";
 import { fetchLatestDossier, summarizeBackendError, getDemoModeResolved } from "../api/client";
+import { useAntigravityTraces } from "../../lib/firestore/hooks";
 import type { AntigravityTraceStepApi, SimulatedActionApi, SignalCredibilityApi, AuditLogEntryApi } from "../api/types";
 import type { RootStackParamList } from "../navigation/types";
 import { useAegisUi } from "../hooks/useAegisUi";
@@ -34,7 +35,18 @@ export function AgentTracesScreen() {
   const { tc, r, contentWrap } = useAegisUi();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const styles = useMemo(() => createStyles(tc), [tc]);
-  const [traces, setTraces] = useState<AntigravityTraceStepApi[]>([]);
+  const { data: traceRows, loading } = useAntigravityTraces();
+  const traces: AntigravityTraceStepApi[] = useMemo(() => {
+    return traceRows.map(r => ({
+      agent: r.agentId,
+      phase: r.action,
+      confidence: r.confidence,
+      detail: (r.inputs as any)?.detail || (r.inputs as any)?.input || r.action,
+      flags: [],
+      inputs_summary: JSON.stringify(r.inputs).substring(0, 50) + "...",
+      outputs_summary: JSON.stringify(r.outputs).substring(0, 50) + "..."
+    }));
+  }, [traceRows]);
   const [cred, setCred] = useState<SignalCredibilityApi[]>([]);
   const [audit, setAudit] = useState<AuditLogEntryApi[]>([]);
   const [conflict, setConflict] = useState<Record<string, unknown> | null>(null);
@@ -61,7 +73,7 @@ export function AgentTracesScreen() {
           const d = await fetchLatestDossier();
           if (!alive) return;
           const m = d.meta ?? {};
-          setTraces(Array.isArray(m.antigravity_trace) ? (m.antigravity_trace as AntigravityTraceStepApi[]) : []);
+          // setTraces handled by useAntigravityTraces
           setCred(Array.isArray(m.signal_credibility) ? (m.signal_credibility as SignalCredibilityApi[]) : []);
           setAudit(Array.isArray(m.audit_log) ? (m.audit_log as AuditLogEntryApi[]) : []);
           setConflict(typeof m.hypothesis_conflict === "object" && m.hypothesis_conflict ? (m.hypothesis_conflict as Record<string, unknown>) : null);

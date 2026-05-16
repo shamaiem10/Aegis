@@ -16,6 +16,7 @@ import {
   listSignals,
   listCrises,
 } from "../api/client";
+import { useAntigravityPulse } from "../../lib/firestore/hooks";
 import type { SignalApi, CrisisDossierApi } from "../api/types";
 import { useForegroundRegion } from "../hooks/useForegroundRegion";
 import { useAegisUi } from "../hooks/useAegisUi";
@@ -187,12 +188,7 @@ export function HomeScreen() {
     return () => clearInterval(id);
   }, [airCrisisLive]);
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      setAiPulseIdx((i) => (i + 1) % AI_PULSE_OBS.length);
-    }, 5000);
-    return () => clearInterval(id);
-  }, []);
+  const { data: pulseMessage } = useAntigravityPulse();
 
   const maxAqi = useMemo(() => {
     let m = 0;
@@ -542,7 +538,7 @@ export function HomeScreen() {
             AI PULSE · ANTIGRAVITY
           </Text>
           <Text style={{ marginTop: 10, fontSize: 14, fontWeight: "600", color: tc.ink, lineHeight: 20 }}>
-            {AI_PULSE_OBS[aiPulseIdx]}
+            {String(pulseMessage?.summary ?? "Antigravity orchestration idle.")}
           </Text>
         </Card>
 

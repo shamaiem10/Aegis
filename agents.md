@@ -1,5 +1,5 @@
 # AEGIS Crisis Management — Agent Rules
-## GCP Project: aegis-496207 | Region: asia-south1
+## GCP Project: aegis-496207 | Region: us-central1
 ## Stack: React Native + Expo (mobile), Node.js Express (cloud-run/)
 ## Rules for all agents:
 - Never delete any existing file
@@ -11,5 +11,5 @@
 - Every API call has try/catch with mock fallback
 - Mock fallback is always the existing mock data already in the codebase
 - Never hardcode API keys — always read from process.env
-- GCP project is aegis-496207, region is asia-south1
+- GCP project is aegis-496207, region is us-central1
 - Service account: firebase-adminsdk-fbsvc@aegis-496207.iam.gserviceaccount.com

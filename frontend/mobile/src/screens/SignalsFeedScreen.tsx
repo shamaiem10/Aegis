@@ -11,7 +11,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
-import { listSignals } from "../api/client";
+import { useSignalStream } from "../../lib/firestore/hooks";
 import type { SignalApi } from "../api/types";
 import { Card, PageHeader, Pill } from "../components/aegis/AppShell";
 import type { PillTone } from "../components/aegis/AppShell";
@@ -121,21 +121,8 @@ function VelocityChart({ schemeDark }: { schemeDark: boolean }) {
 export function SignalsFeedScreen({ navigation }: { navigation: Nav }) {
   const { tc, r, contentWrap } = useAegisUi();
   const schemeDark = useColorScheme() === "dark";
-  const [data, setData] = useState<SignalApi[]>([]);
-  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterKey>("all");
-
-  const load = useCallback(() => {
-    setLoading(true);
-    listSignals()
-      .then((res) => setData(res))
-      .catch((e) => console.warn(e))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { data, loading } = useSignalStream(filter === "all" ? undefined : filter);
 
   const counts = useMemo(() => {
     const air = data.filter((s) => categoryOf(s) === "air").length;

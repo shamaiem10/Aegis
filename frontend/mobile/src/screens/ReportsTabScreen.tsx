@@ -12,7 +12,8 @@ import { useThemeCiro } from "../theme/useThemeCiro";
 
 const BARS = [88, 76, 62, 48, 34, 22];
 
-type StakeholderRow = { audience: string; channel: string; title: string; body: string };
+import { usePendingAlerts } from "../../lib/firestore/hooks";
+import { approveAndDispatchAlert } from "../../lib/api/gateway";
 
 export function ReportsTabScreen() {
   const schemeDark = useColorScheme() === "dark";
@@ -20,28 +21,7 @@ export function ReportsTabScreen() {
   const styles = useMemo(() => createStyles(tc), [tc]);
   const nav = useNavigation();
   const isFocused = useIsFocused();
-  const [stakeholders, setStakeholders] = useState<StakeholderRow[]>([]);
-  const [logErr, setLogErr] = useState("");
-
-  useFocusEffect(
-    useCallback(() => {
-      let alive = true;
-      (async () => {
-        try {
-          setLogErr("");
-          const d = await fetchLatestDossier();
-          if (!alive) return;
-          const raw = d.meta?.stakeholder_messages;
-          setStakeholders(Array.isArray(raw) ? (raw as StakeholderRow[]) : []);
-        } catch (e) {
-          if (alive) setLogErr(summarizeBackendError(e instanceof Error ? e.message : String(e)));
-        }
-      })();
-      return () => {
-        alive = false;
-      };
-    }, []),
-  );
+  const { data: stakeholders, loading } = usePendingAlerts();
 
   return (
     <>
@@ -77,23 +57,35 @@ export function ReportsTabScreen() {
         </GradientHeroCard>
 
         <Card style={{ backgroundColor: tc.card, borderColor: tc.border, borderWidth: 1 }}>
-          <Text style={styles.cardTitle}>Stakeholder comms (latest dossier)</Text>
+          <Text style={styles.cardTitle}>Stakeholder alerts</Text>
           <Text style={styles.cardHint}>
-            Public, EMS, hospitals, utilities, transport, media — Urdu + EN where bundled.
+            Pending alerts waiting for operator approval.
           </Text>
-          {logErr ? <Text style={styles.stakeErr}>{logErr}</Text> : null}
-          {stakeholders.length === 0 && !logErr ? (
-            <Text style={styles.stakeEmpty}>No stakeholder_messages on latest dossier — enable demo or run fusion.</Text>
+          {loading && stakeholders.length === 0 ? (
+            <Text style={styles.stakeEmpty}>Loading alerts...</Text>
+          ) : stakeholders.length === 0 ? (
+            <Text style={styles.stakeEmpty}>No pending alerts.</Text>
           ) : (
             stakeholders.map((s, i) => (
               <View
-                key={`${s.audience}-${i}`}
+                key={`${s.id}-${i}`}
                 style={[styles.stakeBlock, { borderColor: tc.border, backgroundColor: tc.muted }]}
               >
-                <Text style={styles.stakeAud}>{s.audience}</Text>
-                <Text style={styles.stakeCh}>{s.channel}</Text>
-                <Text style={styles.stakeTitle}>{s.title}</Text>
-                <Text style={styles.stakeBody}>{s.body}</Text>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={styles.stakeAud}>{s.channel ?? "All"}</Text>
+                  {s.status === "pending_approval" || s.status === "pending" ? (
+                    <Pressable
+                      onPress={() => approveAndDispatchAlert(s.id).catch(console.warn)}
+                      style={{ backgroundColor: tc.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
+                    >
+                      <Text style={{ color: "#fff", fontSize: 11, fontWeight: "800" }}>Approve</Text>
+                    </Pressable>
+                  ) : (
+                    <Text style={{ fontSize: 11, color: tc.inkSoft }}>{s.status}</Text>
+                  )}
+                </View>
+                <Text style={styles.stakeTitle}>Severity {s.severity}</Text>
+                <Text style={styles.stakeBody}>{s.message}</Text>
               </View>
             ))
           )}

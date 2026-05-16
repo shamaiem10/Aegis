@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-import { resources } from "../components/aegis/data";
+import { useResourceInventory } from "../../lib/firestore/hooks";
 import { Card, PageHeader, Pill, MiniBar } from "../components/aegis/AppShell";
 import { useAegisUi } from "../hooks/useAegisUi";
 import { useThemeCiro } from "../theme/useThemeCiro";
@@ -10,6 +10,7 @@ import { useThemeCiro } from "../theme/useThemeCiro";
 export function ResourcesScreen() {
   const { tc, r, contentWrap } = useAegisUi();
   const styles = useMemo(() => createStyles(tc), [tc]);
+  const { data: resources, loading } = useResourceInventory();
 
   return (
     <ScrollView
@@ -24,8 +25,13 @@ export function ResourcesScreen() {
         eyebrow="Operations"
         title="Resource inventory"
         sub="Mirrors web Resources screen — deployable pool with assignment hints."
-        right={<Pill tone="mint">{resources.length} types</Pill>}
+        right={<Pill tone="mint">{loading ? "Loading..." : `${resources.length} types`}</Pill>}
       />
+      {loading && !resources.length ? (
+        <View style={{ marginTop: 32 }}>
+          <Text style={{ textAlign: "center", color: tc.inkSoft }}>Loading inventory...</Text>
+        </View>
+      ) : null}
       {resources.map((r) => {
         const pct = Math.round((r.deployed / r.total) * 100);
         return (

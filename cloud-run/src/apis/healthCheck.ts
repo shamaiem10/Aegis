@@ -22,7 +22,7 @@ function projectId(): string {
 }
 
 function region(): string {
-  return process.env.GCP_REGION?.trim() || process.env.GOOGLE_CLOUD_REGION?.trim() || "asia-south1";
+  return process.env.GCP_REGION?.trim() || process.env.GOOGLE_CLOUD_REGION?.trim() || "us-central1";
 }
 
 function geminiModel(): string {

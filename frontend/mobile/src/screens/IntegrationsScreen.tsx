@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, Switch, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 
-import { apiHealth } from "../components/aegis/data";
+import { useAPIHealth } from "../../lib/firestore/hooks";
 import { Card, PageHeader, Pill, MiniBar } from "../components/aegis/AppShell";
 import type { PillTone } from "../components/aegis/AppShell";
 import { fetchLatestDossier, summarizeBackendError } from "../api/client";
@@ -44,6 +44,7 @@ export function IntegrationsScreen() {
     }, []),
   );
 
+  const { data: apiHealth, loading } = useAPIHealth();
   const displayPct = degradedSim ? 73 : baselinePct;
 
   return (
@@ -84,11 +85,17 @@ export function IntegrationsScreen() {
         </View>
       </Card>
 
+      {loading && !apiHealth.length ? (
+        <View style={{ marginTop: 16 }}>
+          <Text style={{ textAlign: "center", color: tc.inkSoft }}>Loading API health...</Text>
+        </View>
+      ) : null}
+
       {apiHealth.map((row) => (
         <Card key={row.name} style={styles.card}>
           <Text style={styles.name}>{row.name}</Text>
           <Pill tone={statusTone(row.status)}>
-            {row.status} · {row.latency}
+            {row.status} {row.latency ? `· ${row.latency}` : ""}
           </Pill>
         </Card>
       ))}

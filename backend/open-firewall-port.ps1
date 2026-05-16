@@ -1,5 +1,5 @@
 # Run once as Administrator: allow inbound TCP to the dev API port (default 8000).
-param([int]$Port = 8000)
+param([int]$Port = 8080)
 $RuleName = "Aegis dev API $Port"
 $existing = Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue
 if ($existing) {

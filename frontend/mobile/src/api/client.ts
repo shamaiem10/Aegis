@@ -112,15 +112,16 @@ export async function saveDemoMode(useDemo: boolean): Promise<void> {
 }
 
 export async function getApiBase(): Promise<string> {
-  const env = process.env.EXPO_PUBLIC_API_URL?.trim();
-  if (env) return env.replace(/\/$/, "");
-  
   try {
     const stored = await AsyncStorage.getItem(STORAGE_API_BASE);
     if (stored?.trim()) return stored.trim().replace(/\/$/, "");
   } catch {
     /* ignore */
   }
+
+  const env = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (env) return env.replace(/\/$/, "");
+  
   return defaultApiBase();
 }
 
@@ -159,7 +160,7 @@ async function request<T>(
       }
       const hint =
         Platform.OS !== "web"
-          ? " Check LAN URL, same Wi‑Fi, backend --host 0.0.0.0, firewall port 8000."
+          ? " Check LAN URL, same Wi‑Fi, backend --host 0.0.0.0, firewall port 8080."
           : "";
       throw new Error(
         e instanceof Error ? `${e.message}.${hint}` : `Request failed.${hint}`,
@@ -174,8 +175,18 @@ async function request<T>(
   }
   if (!text) return undefined as T;
   try {
-    return JSON.parse(text) as T;
-  } catch {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === "object" && "success" in parsed && "data" in parsed) {
+      if (parsed.success === false) {
+        throw new Error(parsed.error || "API returned success=false");
+      }
+      return parsed.data as T;
+    }
+    return parsed as T;
+  } catch (e) {
+    if (e instanceof Error && e.message !== "Invalid JSON from server") {
+      throw e;
+    }
     throw new Error("Invalid JSON from server");
   }
 }

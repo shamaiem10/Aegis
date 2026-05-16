@@ -8,6 +8,7 @@ import {
   ScrollView,
   Switch,
   Platform,
+  TouchableOpacity,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 
@@ -102,6 +103,7 @@ export function SettingsScreen() {
   return (
     <ScrollView
       style={styles.wrap}
+      keyboardShouldPersistTaps="handled"
       contentContainerStyle={[
         contentWrap,
         {
@@ -150,7 +152,7 @@ export function SettingsScreen() {
         onChangeText={setDraft}
         autoCapitalize="none"
         autoCorrect={false}
-        placeholder="http://YOUR_LAN_IP:8000"
+        placeholder="http://YOUR_LAN_IP:8080"
         editable={!demo}
         style={[styles.input, demo && styles.inputDisabled]}
       />
@@ -193,21 +195,26 @@ export function SettingsScreen() {
           </Pressable>
         </View>
       ) : null}
-      <Pressable
-        onPress={() => void save()}
+      <TouchableOpacity
+        onPress={() => {
+          console.log("Save button tapped");
+          void save();
+        }}
         disabled={demo}
+        activeOpacity={0.7}
         style={[styles.btn, demo && { opacity: 0.45 }]}
       >
         <Text style={styles.btnLbl}>Save & ping /health</Text>
-      </Pressable>
-      <Pressable
+      </TouchableOpacity>
+      <TouchableOpacity
         onPress={() => {
           setDraft(defaultApiBase());
         }}
+        activeOpacity={0.7}
         style={styles.link}
       >
         <Text style={styles.linkLbl}>Reset URL to default ({defaultApiBase()})</Text>
-      </Pressable>
+      </TouchableOpacity>
 
       <Text style={[styles.h1, { marginTop: 28 }]}>Environmental thresholds</Text>
       <Text style={styles.sub}>
