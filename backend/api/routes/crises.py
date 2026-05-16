@@ -9,6 +9,7 @@ from agents.severity_predictor.predictor import predict_severity
 from agents.signal_fusion.fusion import fuse_signals
 from models.schemas import CrisisStatus
 from store.repository import get_repository
+from tools.live_crisis_mock import get_live_crises_mock_bundle
 from tools.open_meteo import forecast_snapshot
 from tools.mock_data_io import parse_raw_signals
 from tools.signals_loader import load_live_raw_signals
@@ -48,6 +49,16 @@ async def preview_core(raw: list):
         "allocation": alloc,
         "weather_loaded": wx is not None,
     }
+
+
+@router.get("/mock/live")
+async def crises_mock_live() -> dict[str, object]:
+    """Standard `{success, data, error}` envelope; `data` is a typed LiveCrisisMockBundle."""
+    try:
+        bundle = get_live_crises_mock_bundle()
+        return {"success": True, "data": bundle.model_dump(mode="json"), "error": None}
+    except Exception as e:
+        return {"success": False, "data": None, "error": str(e)}
 
 
 @router.get("")

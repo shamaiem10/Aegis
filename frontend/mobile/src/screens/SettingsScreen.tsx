@@ -50,6 +50,13 @@ function rewriteUrlPort(url: string, port: number): string | null {
   }
 }
 
+/** Local Cloud Run Express (`npm run dev` in `cloud-run/`). */
+const LOCAL_CLOUD_RUN_PORT = 8080;
+
+function backendPortLooksUnusual(port: number | null): port is number {
+  return port !== null && port !== DEFAULT_BACKEND_PORT && port !== LOCAL_CLOUD_RUN_PORT;
+}
+
 export function SettingsScreen() {
   const { tc, r, contentWrap } = useAegisUi();
   const styles = useMemo(() => createStyles(tc), [tc]);
@@ -152,7 +159,7 @@ export function SettingsScreen() {
         onChangeText={setDraft}
         autoCapitalize="none"
         autoCorrect={false}
-        placeholder="http://YOUR_LAN_IP:8080"
+        placeholder={`http://YOUR_LAN_IP:${DEFAULT_BACKEND_PORT}`}
         editable={!demo}
         style={[styles.input, demo && styles.inputDisabled]}
       />
@@ -174,15 +181,36 @@ export function SettingsScreen() {
           </Text>
         </View>
       ) : null}
-      {!demo &&
-      explicitUrlPort(draft) != null &&
-      explicitUrlPort(draft) !== DEFAULT_BACKEND_PORT ? (
+      {!demo && draft.includes(":8000") ? (
+        <View style={[styles.warnBox, { marginTop: 10, borderColor: tc.alert }]}>
+          <Text style={[styles.warnTitle, { color: tc.alertDeep }]}>AI agents need port 8080</Text>
+          <Text style={styles.warnTxt}>
+            This URL uses FastAPI port 8000. Triage and action plans call cloud-run on port 8080.
+          </Text>
+          <Pressable
+            onPress={() => {
+              const next = rewriteUrlPort(draft, LOCAL_CLOUD_RUN_PORT);
+              if (next) {
+                setDraft(next);
+                void saveApiBase(next).then(() => setMsg("Switched to port 8080 (cloud-run)."));
+              }
+            }}
+            style={[styles.portBtn, { marginTop: 10 }]}
+          >
+            <Text style={styles.portBtnLbl}>Switch to port 8080 & save</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {!demo && backendPortLooksUnusual(explicitUrlPort(draft)) ? (
         <View style={styles.portBox}>
-          <Text style={styles.portTitle}>Port mismatch</Text>
+          <Text style={styles.portTitle}>Unusual port</Text>
           <Text style={styles.portTxt}>
-            This URL uses port {explicitUrlPort(draft)}. The bundled Aegis backend defaults to{" "}
-            {DEFAULT_BACKEND_PORT} (<Text style={styles.monoInline}>PORT</Text> in{" "}
-            <Text style={styles.monoInline}>backend/.env</Text>) unless you changed it.
+            This URL uses port {explicitUrlPort(draft)}. FastAPI in{" "}
+            <Text style={styles.monoInline}>backend/</Text> expects{" "}
+            <Text style={styles.bold}>{DEFAULT_BACKEND_PORT}</Text> (<Text style={styles.monoInline}>PORT</Text> in{" "}
+            <Text style={styles.monoInline}>backend/.env</Text>); local Express in{" "}
+            <Text style={styles.monoInline}>cloud-run/</Text> often{" "}
+            <Text style={styles.bold}>{LOCAL_CLOUD_RUN_PORT}</Text>.
           </Text>
           <Pressable
             onPress={() => {
@@ -191,7 +219,16 @@ export function SettingsScreen() {
             }}
             style={styles.portBtn}
           >
-            <Text style={styles.portBtnLbl}>Use port {DEFAULT_BACKEND_PORT}</Text>
+            <Text style={styles.portBtnLbl}>Use port {DEFAULT_BACKEND_PORT} (FastAPI)</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              const next = rewriteUrlPort(draft, LOCAL_CLOUD_RUN_PORT);
+              if (next) setDraft(next);
+            }}
+            style={[styles.portBtn, { marginTop: 10 }]}
+          >
+            <Text style={styles.portBtnLbl}>Use port {LOCAL_CLOUD_RUN_PORT} (Cloud Run dev)</Text>
           </Pressable>
         </View>
       ) : null}

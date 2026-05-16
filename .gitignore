@@ -8,4 +8,6 @@ backend/.venv/
 
 # node
 node_modules
-.env
+.envcloud-run/secrets/*.json
+
+cloud-run/secrets/

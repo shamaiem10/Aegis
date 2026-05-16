@@ -5,6 +5,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "expo start --lan",
+    "start:device": "powershell -ExecutionPolicy Bypass -NoProfile -File ./scripts/start-with-lan-ip.ps1",
     "start:8082": "expo start --lan --port 8082",
     "start:clear": "expo start -c --lan",
     "start:localhost": "expo start",
@@ -17,7 +18,8 @@
     "prebuild:android": "expo prebuild --platform android",
     "build:apk": "eas build --platform android --profile preview",
     "build:apk:prod": "eas build --platform android --profile production",
-    "seed": "npx ts-node scripts/seedFirestore.ts"
+    "seed": "npx ts-node scripts/seedFirestore.ts",
+    "lint": "expo lint"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
@@ -45,6 +47,8 @@
   "devDependencies": {
     "@types/node": "^22.16.5",
     "@types/react": "~19.1.0",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~10.0.0",
     "firebase-admin": "^13.0.0",
     "ts-node": "^10.9.2",
     "typescript": "~5.9.2"

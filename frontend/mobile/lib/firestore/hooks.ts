@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   DocumentData,
   QueryDocumentSnapshot,
@@ -13,23 +13,18 @@ import {
 } from "firebase/firestore";
 
 import type { CrisisDossierApi, SignalApi } from "../../src/api/types";
-import type { AntigravityTraceStepApi } from "../../src/api/metaTypes";
+import type { Resource } from "../../src/components/aegis/data";
 import {
-  agentTrace,
-  apiHealth,
-  crises as mockCrisesUi,
-  resources as mockResources,
-  signals as mockSignalsUi,
-  type Crisis,
-  type Resource,
-  type Signal as UiSignal,
-} from "../../src/components/aegis/data";
-import { DEMO_ISLAMABAD_DOSSIERS } from "../../src/data/demoIslamabadCrises";
-import { DEMO_ORCHESTRATION_META } from "../../src/data/demoOrchestrationMeta";
-import { DEMO_ISLAMABAD_SIGNALS } from "../../src/data/demoIslamabadSignals";
+  fetchResourceInventory,
+  listCrises,
+  listSignals,
+  mockLiveCrisisBundleEnabled,
+  pkMockAlertsEnabled,
+  pkResourcesRemoteBase,
+} from "../../src/api/client";
+import type { IonName } from "../../src/utils/alertIcons";
+import { filterSignalsPakistan } from "../../src/config/pakistan";
 import { getFirebaseApp } from "../firebase";
-
-/** Firestore-ready crisis rows (matches `scripts/seedFirestore.ts`). */
 export type FirestoreCrisisDoc = {
   crisis_id: string;
   status: string;
@@ -61,129 +56,74 @@ export type PendingAlertRow = {
   id: string;
   crisisId: string;
   message: string;
+  title: string;
   severity: number;
   status: string;
+  /** Raw audience key, e.g. PUBLIC, HOSPITALS */
+  audienceType: string;
   channel?: string;
+  urduText?: string;
+  stagingOrderIndex?: number;
   issuedAt?: string;
+  language?: string;
 };
 
-function logFirestoreHook(name: string, err: unknown): void {
-  console.warn(`[${name}] Firestore subscription error — using mock fallback`, err);
-}
-
-function fallbackCrisisDossiers(): CrisisDossierApi[] {
-  return DEMO_ISLAMABAD_DOSSIERS.filter((d) => d.status === "active" || d.status === "monitoring").sort(
-    (a, b) => b.severity.score - a.severity.score,
-  );
-}
-
-/** Bridge UI mock signals (data.ts) → SignalApi-ish rows for list UIs. */
-function signalsFromUiMock(): SignalApi[] {
-  return mockSignalsUi.map((s: UiSignal) => ({
-    id: s.id,
-    source: s.source,
-    kind: s.source,
-    text: s.text,
-    lat: 0,
-    lon: 0,
-    region: "",
-    severity_hint: Math.min(10, Math.max(1, Math.round(s.urgency / 10))),
-    recorded_at: new Date().toISOString(),
-    payload: {
-      credibility_pct: s.credibility,
-      crisisId: s.crisisId,
-      badge: s.badge,
-      time: s.time,
-    },
-  }));
-}
-
-function fallbackSignals(filter?: string): SignalApi[] {
-  const fromDemo = [...DEMO_ISLAMABAD_SIGNALS].sort(
-    (a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime(),
-  );
-  let base = fromDemo.length ? fromDemo : signalsFromUiMock();
-  if (filter?.trim()) {
-    const f = filter.trim().toLowerCase();
-    base = base.filter(
-      (s) =>
-        s.source.toLowerCase().includes(f) ||
-        s.kind.toLowerCase().includes(f) ||
-        s.text.toLowerCase().includes(f),
-    );
-  }
-  return base;
-}
-
-function fallbackResourceInventory(): Resource[] {
-  return mockResources;
-}
-
-function fallbackApiHealth(): ApiHealthRow[] {
-  return apiHealth.map((row) => ({ name: row.name, status: row.status, latency: row.latency }));
-}
-
-function fallbackAntigravityTraces(): AntigravityTraceRow[] {
-  const fromMeta = DEMO_ORCHESTRATION_META.antigravity_trace as AntigravityTraceStepApi[] | undefined;
-  if (fromMeta?.length) {
-    return fromMeta.map((step, i) => ({
-      id: `demo-meta-trace-${i}`,
-      agentId: String(step.agent ?? "agent"),
-      action: String(step.phase ?? "phase"),
-      inputs: { detail: step.detail ?? "" },
-      outputs: { outputs_summary: step.outputs_summary ?? "" },
-      confidence: typeof step.confidence === "number" ? step.confidence : 0,
-      timestamp: new Date(Date.now() - i * 1000).toISOString(),
-    }));
-  }
-  return agentTrace.map((t, i) => ({
-    id: `demo-trace-${i}`,
-    agentId: t.agent,
-    action: t.output,
-    inputs: { input: t.input },
-    outputs: { output: t.output, reasoning: t.reasoning, tools: t.tools },
-    confidence: t.confidence / 100,
-    timestamp: new Date(Date.now() - i * 2000).toISOString(),
-  }));
-}
-
-function fallbackAntigravityPulse(): AntigravityPulseDoc {
-  const trace = DEMO_ORCHESTRATION_META.antigravity_trace as AntigravityTraceStepApi[] | undefined;
-  const tail = trace?.length ? trace[trace.length - 1] : undefined;
+function pendingAlertFromDoc(docId: string, r: Record<string, unknown>): PendingAlertRow {
+  const audienceType = String(r.audienceType ?? r.audience ?? r.channel ?? "GENERAL");
+  const message = String(
+    r.messageText ?? r.body ?? r.message ?? r.bodyEnglish ?? r.urduText ?? "",
+  ).trim();
+  const title = String(r.title ?? r.subject ?? audienceLabel(audienceType)).trim();
   return {
-    status: "nominal",
-    summary: tail?.detail ?? "Antigravity orchestration idle (bundled demo pulse).",
-    lastAgent: tail?.agent ?? "signal_ingest",
-    confidence: tail?.confidence ?? 0.9,
-    timestamp: new Date().toISOString(),
+    id: docId,
+    crisisId: String(r.crisisId ?? r.crisis_id ?? ""),
+    message: message || "No message body — open crisis dossier for context.",
+    title,
+    severity: Number(r.severity ?? r.severity_hint ?? 0),
+    status: String(r.status ?? "pending_approval"),
+    audienceType,
+    channel: typeof r.channel === "string" ? r.channel : undefined,
+    urduText: typeof r.urduText === "string" ? r.urduText : undefined,
+    stagingOrderIndex:
+      typeof r.stagingOrderIndex === "number" ? r.stagingOrderIndex : undefined,
+    issuedAt:
+      typeof r.generatedAt === "string"
+        ? r.generatedAt
+        : typeof r.issuedAt === "string"
+          ? r.issuedAt
+          : undefined,
+    language: typeof r.language === "string" ? r.language : undefined,
   };
 }
 
-function fallbackPendingAlerts(): PendingAlertRow[] {
-  const rows: PendingAlertRow[] = [];
-  for (const d of DEMO_ISLAMABAD_DOSSIERS) {
-    if (d.status !== "active" && d.status !== "monitoring") continue;
-    d.notifications.forEach((n, i) => {
-      rows.push({
-        id: `${d.crisis_id}-pending-${i}`,
-        crisisId: d.crisis_id,
-        message: `${n.title}: ${n.body}`,
-        severity: d.severity.score,
-        status: "pending_approval",
-        channel: n.channel,
-        issuedAt: d.created_at,
-      });
-    });
-  }
-  if (rows.length) return rows;
-  return mockCrisesUi.slice(0, 2).map((c: Crisis, i) => ({
-    id: `mock-crisis-${c.id}-${i}`,
-    crisisId: c.id,
-    message: `${c.type} @ ${c.location} — demo pending approval`,
-    severity: c.severity,
-    status: "pending_approval",
-    issuedAt: new Date().toISOString(),
-  }));
+/** Human-readable label for StakeholderAlertAgent audience keys. */
+export function audienceLabel(audienceType: string): string {
+  const k = audienceType.toUpperCase().replace(/\s+/g, "_");
+  const map: Record<string, string> = {
+    PUBLIC: "Public (Urdu SMS)",
+    EMERGENCY_SERVICES: "Rescue 1122 / EMS",
+    HOSPITALS: "Hospitals (PIMS, Poly Clinic)",
+    UTILITY_COMPANIES: "Utilities (WASA, IESCO)",
+    TRANSPORT_AUTHORITY: "Transport (NHMP, CDA)",
+    MEDIA_COMMAND: "Media / ICS briefing",
+    GENERAL: "Stakeholder",
+  };
+  return map[k] ?? audienceType.replace(/_/g, " ");
+}
+
+function logFirestoreHook(name: string, err: unknown): void {
+  console.warn(`[${name}] Firestore error — staying empty (no bundled mock)`, err);
+}
+
+function freshEmptyPulse(): AntigravityPulseDoc {
+  const t = new Date().toISOString();
+  return {
+    status: "idle",
+    summary: "",
+    lastAgent: "",
+    confidence: 0,
+    timestamp: t,
+  };
 }
 
 function crisisFromDoc(d: DocumentData | undefined, docId: string): CrisisDossierApi | null {
@@ -251,15 +191,45 @@ export function useCrisisStream(): {
   loading: boolean;
   usingFallback: boolean;
 } {
-  const fallback = useMemo(() => fallbackCrisisDossiers(), []);
-  const [data, setData] = useState<CrisisDossierApi[]>(fallback);
+  const [data, setData] = useState<CrisisDossierApi[]>([]);
   const [loading, setLoading] = useState(true);
-  const [usingFallback, setUsingFallback] = useState(false);
+  /** true if Firebase unavailable or snapshot errored — not “offline demo”; data stays empty */
+  const [usingFallback, setUsingFallback] = useState(true);
 
   useEffect(() => {
+    if (pkMockAlertsEnabled() || mockLiveCrisisBundleEnabled()) {
+      let cancelled = false;
+      const load = async () => {
+        try {
+          const rows = await listCrises({ limit: 120 });
+          if (!cancelled) {
+            setData(rows);
+            setUsingFallback(false);
+            setLoading(false);
+          }
+        } catch (e) {
+          logFirestoreHook("useCrisisStream/pk-mock", e);
+          if (!cancelled) {
+            setData([]);
+            setUsingFallback(true);
+            setLoading(false);
+          }
+        }
+      };
+      setLoading(true);
+      void load();
+      const timer = setInterval(() => {
+        void load();
+      }, 60_000);
+      return () => {
+        cancelled = true;
+        clearInterval(timer);
+      };
+    }
+
     const app = getFirebaseApp();
     if (!app) {
-      setData(fallback);
+      setData([]);
       setUsingFallback(true);
       setLoading(false);
       return;
@@ -285,14 +255,14 @@ export function useCrisisStream(): {
             const row = crisisFromDoc(docSnap.data(), docSnap.id);
             if (row) rows.push(row);
           });
-          setData(rows.length ? rows : fallback);
-          setUsingFallback(rows.length === 0);
+          setData(rows);
+          setUsingFallback(false);
           setLoading(false);
         },
         (err) => {
           logFirestoreHook("useCrisisStream", err);
           if (!unsubscribed) {
-            setData(fallback);
+            setData([]);
             setUsingFallback(true);
             setLoading(false);
           }
@@ -300,7 +270,7 @@ export function useCrisisStream(): {
       );
     } catch (err) {
       logFirestoreHook("useCrisisStream", err);
-      setData(fallback);
+      setData([]);
       setUsingFallback(true);
       setLoading(false);
     }
@@ -309,7 +279,7 @@ export function useCrisisStream(): {
       unsubscribed = true;
       unsubscribe?.();
     };
-  }, [fallback]);
+  }, []);
 
   return { data, loading, usingFallback };
 }
@@ -319,16 +289,54 @@ export function useSignalStream(filter?: string): {
   loading: boolean;
   usingFallback: boolean;
 } {
-  const fallback = useMemo(() => fallbackSignals(filter), [filter]);
-  const [data, setData] = useState<SignalApi[]>(fallback);
+  const [data, setData] = useState<SignalApi[]>([]);
   const [loading, setLoading] = useState(true);
-  const [usingFallback, setUsingFallback] = useState(false);
+  const [usingFallback, setUsingFallback] = useState(true);
 
   useEffect(() => {
-    const fb = fallbackSignals(filter);
+    if (pkMockAlertsEnabled()) {
+      let cancelled = false;
+      const load = async () => {
+        try {
+          let rows = await listSignals();
+          rows = filterSignalsPakistan(rows);
+          const f = filter?.trim().toLowerCase();
+          if (f) {
+            rows = rows.filter(
+              (s) =>
+                s.source.toLowerCase().includes(f) ||
+                s.kind.toLowerCase().includes(f) ||
+                s.text.toLowerCase().includes(f),
+            );
+          }
+          if (!cancelled) {
+            setData(rows);
+            setUsingFallback(false);
+            setLoading(false);
+          }
+        } catch (err) {
+          logFirestoreHook("useSignalStream/pk-mock", err);
+          if (!cancelled) {
+            setData([]);
+            setUsingFallback(true);
+            setLoading(false);
+          }
+        }
+      };
+      setLoading(true);
+      void load();
+      const timer = setInterval(() => {
+        void load();
+      }, 60_000);
+      return () => {
+        cancelled = true;
+        clearInterval(timer);
+      };
+    }
+
     const app = getFirebaseApp();
     if (!app) {
-      setData(fb);
+      setData([]);
       setUsingFallback(true);
       setLoading(false);
       return;
@@ -360,14 +368,14 @@ export function useSignalStream(filter?: string): {
                   s.text.toLowerCase().includes(f),
               )
             : rows;
-          setData(filtered.length ? filtered : fb);
-          setUsingFallback(filtered.length === 0);
+          setData(filtered);
+          setUsingFallback(false);
           setLoading(false);
         },
         (err) => {
           logFirestoreHook("useSignalStream", err);
           if (!unsubscribed) {
-            setData(fb);
+            setData([]);
             setUsingFallback(true);
             setLoading(false);
           }
@@ -375,7 +383,7 @@ export function useSignalStream(filter?: string): {
       );
     } catch (err) {
       logFirestoreHook("useSignalStream", err);
-      setData(fb);
+      setData([]);
       setUsingFallback(true);
       setLoading(false);
     }
@@ -389,68 +397,89 @@ export function useSignalStream(filter?: string): {
   return { data, loading, usingFallback };
 }
 
+function mapInventoryItems(items: unknown): Resource[] {
+  if (!Array.isArray(items)) return [];
+  return items.map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      type: String(r.type ?? "Unit"),
+      icon: (String(r.icon ?? "cube-outline") as IonName),
+      total: Number(r.total ?? 0),
+      deployed: Number(r.deployed ?? 0),
+      healthImpact: r.healthImpact != null ? String(r.healthImpact) : undefined,
+    };
+  });
+}
+
 export function useResourceInventory(): {
   data: Resource[];
   loading: boolean;
   usingFallback: boolean;
 } {
-  const fallback = useMemo(() => fallbackResourceInventory(), []);
-  const [data, setData] = useState<Resource[]>(fallback);
+  const [data, setData] = useState<Resource[]>([]);
   const [loading, setLoading] = useState(true);
-  const [usingFallback, setUsingFallback] = useState(false);
+  const [usingFallback, setUsingFallback] = useState(true);
 
   useEffect(() => {
+    let unsubscribed = false;
+    let unsubscribe: (() => void) | undefined;
+
+    const applyItems = (items: Resource[], fallback: boolean) => {
+      if (unsubscribed) return;
+      setData(items);
+      setUsingFallback(fallback);
+      setLoading(false);
+    };
+
+    (async () => {
+      try {
+        const inv = await fetchResourceInventory(false);
+        if (!unsubscribed && inv.items?.length) {
+          applyItems(mapInventoryItems(inv.items), false);
+        }
+      } catch (e) {
+        logFirestoreHook("useResourceInventory:api", e);
+      }
+    })();
+
     const app = getFirebaseApp();
     if (!app) {
-      setData(fallback);
-      setUsingFallback(true);
-      setLoading(false);
-      return;
+      if (!pkResourcesRemoteBase()) {
+        applyItems([], true);
+      }
+      return () => {
+        unsubscribed = true;
+      };
     }
 
     const db = getFirestore(app);
     const ref = doc(db, "resources", "inventory");
-
-    let unsubscribed = false;
-    let unsubscribe: (() => void) | undefined;
 
     try {
       unsubscribe = onSnapshot(
         ref,
         (snap) => {
           if (unsubscribed) return;
-          const row = snap.data() as { items?: Resource[] } | undefined;
-          const items = row?.items;
-          if (items && Array.isArray(items) && items.length) {
-            setData(items);
-            setUsingFallback(false);
-          } else {
-            setData(fallback);
-            setUsingFallback(true);
+          const row = snap.exists() ? (snap.data() as { items?: unknown } | undefined) : undefined;
+          const items = mapInventoryItems(row?.items);
+          if (items.length) {
+            applyItems(items, false);
           }
-          setLoading(false);
         },
         (err) => {
           logFirestoreHook("useResourceInventory", err);
-          if (!unsubscribed) {
-            setData(fallback);
-            setUsingFallback(true);
-            setLoading(false);
-          }
         },
       );
     } catch (err) {
       logFirestoreHook("useResourceInventory", err);
-      setData(fallback);
-      setUsingFallback(true);
-      setLoading(false);
+      if (!data.length) applyItems([], true);
     }
 
     return () => {
       unsubscribed = true;
       unsubscribe?.();
     };
-  }, [fallback]);
+  }, []);
 
   return { data, loading, usingFallback };
 }
@@ -460,15 +489,14 @@ export function useAPIHealth(): {
   loading: boolean;
   usingFallback: boolean;
 } {
-  const fallback = useMemo(() => fallbackApiHealth(), []);
-  const [data, setData] = useState<ApiHealthRow[]>(fallback);
+  const [data, setData] = useState<ApiHealthRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [usingFallback, setUsingFallback] = useState(false);
+  const [usingFallback, setUsingFallback] = useState(true);
 
   useEffect(() => {
     const app = getFirebaseApp();
     if (!app) {
-      setData(fallback);
+      setData([]);
       setUsingFallback(true);
       setLoading(false);
       return;
@@ -495,14 +523,14 @@ export function useAPIHealth(): {
               latency: (r.latency as string) ?? null,
             });
           });
-          setData(rows.length ? rows : fallback);
-          setUsingFallback(rows.length === 0);
+          setData(rows);
+          setUsingFallback(false);
           setLoading(false);
         },
         (err) => {
           logFirestoreHook("useAPIHealth", err);
           if (!unsubscribed) {
-            setData(fallback);
+            setData([]);
             setUsingFallback(true);
             setLoading(false);
           }
@@ -510,7 +538,7 @@ export function useAPIHealth(): {
       );
     } catch (err) {
       logFirestoreHook("useAPIHealth", err);
-      setData(fallback);
+      setData([]);
       setUsingFallback(true);
       setLoading(false);
     }
@@ -519,7 +547,7 @@ export function useAPIHealth(): {
       unsubscribed = true;
       unsubscribe?.();
     };
-  }, [fallback]);
+  }, []);
 
   return { data, loading, usingFallback };
 }
@@ -529,15 +557,14 @@ export function useAntigravityTraces(): {
   loading: boolean;
   usingFallback: boolean;
 } {
-  const fallback = useMemo(() => fallbackAntigravityTraces(), []);
-  const [data, setData] = useState<AntigravityTraceRow[]>(fallback);
+  const [data, setData] = useState<AntigravityTraceRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [usingFallback, setUsingFallback] = useState(false);
+  const [usingFallback, setUsingFallback] = useState(true);
 
   useEffect(() => {
     const app = getFirebaseApp();
     if (!app) {
-      setData(fallback);
+      setData([]);
       setUsingFallback(true);
       setLoading(false);
       return;
@@ -559,14 +586,14 @@ export function useAntigravityTraces(): {
             const row = traceFromDoc(docSnap);
             if (row) rows.push(row);
           });
-          setData(rows.length ? rows : fallback);
-          setUsingFallback(rows.length === 0);
+          setData(rows);
+          setUsingFallback(false);
           setLoading(false);
         },
         (err) => {
           logFirestoreHook("useAntigravityTraces", err);
           if (!unsubscribed) {
-            setData(fallback);
+            setData([]);
             setUsingFallback(true);
             setLoading(false);
           }
@@ -574,7 +601,7 @@ export function useAntigravityTraces(): {
       );
     } catch (err) {
       logFirestoreHook("useAntigravityTraces", err);
-      setData(fallback);
+      setData([]);
       setUsingFallback(true);
       setLoading(false);
     }
@@ -583,7 +610,7 @@ export function useAntigravityTraces(): {
       unsubscribed = true;
       unsubscribe?.();
     };
-  }, [fallback]);
+  }, []);
 
   return { data, loading, usingFallback };
 }
@@ -593,15 +620,14 @@ export function useAntigravityPulse(): {
   loading: boolean;
   usingFallback: boolean;
 } {
-  const fallback = useMemo(() => fallbackAntigravityPulse(), []);
-  const [data, setData] = useState<AntigravityPulseDoc>(fallback);
+  const [data, setData] = useState<AntigravityPulseDoc>(() => freshEmptyPulse());
   const [loading, setLoading] = useState(true);
-  const [usingFallback, setUsingFallback] = useState(false);
+  const [usingFallback, setUsingFallback] = useState(true);
 
   useEffect(() => {
     const app = getFirebaseApp();
     if (!app) {
-      setData(fallback);
+      setData(freshEmptyPulse());
       setUsingFallback(true);
       setLoading(false);
       return;
@@ -618,20 +644,19 @@ export function useAntigravityPulse(): {
         ref,
         (snap) => {
           if (unsubscribed) return;
-          const pulseData = snap.data();
+          const pulseData = snap.exists() ? snap.data() : undefined;
           if (pulseData && Object.keys(pulseData).length > 0) {
             setData(pulseData as AntigravityPulseDoc);
-            setUsingFallback(false);
           } else {
-            setData(fallback);
-            setUsingFallback(true);
+            setData(freshEmptyPulse());
           }
+          setUsingFallback(false);
           setLoading(false);
         },
         (err) => {
           logFirestoreHook("useAntigravityPulse", err);
           if (!unsubscribed) {
-            setData(fallback);
+            setData(freshEmptyPulse());
             setUsingFallback(true);
             setLoading(false);
           }
@@ -639,7 +664,7 @@ export function useAntigravityPulse(): {
       );
     } catch (err) {
       logFirestoreHook("useAntigravityPulse", err);
-      setData(fallback);
+      setData(freshEmptyPulse());
       setUsingFallback(true);
       setLoading(false);
     }
@@ -648,7 +673,7 @@ export function useAntigravityPulse(): {
       unsubscribed = true;
       unsubscribe?.();
     };
-  }, [fallback]);
+  }, []);
 
   return { data, loading, usingFallback };
 }
@@ -658,15 +683,14 @@ export function usePendingAlerts(): {
   loading: boolean;
   usingFallback: boolean;
 } {
-  const fallback = useMemo(() => fallbackPendingAlerts(), []);
-  const [data, setData] = useState<PendingAlertRow[]>(fallback);
+  const [data, setData] = useState<PendingAlertRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [usingFallback, setUsingFallback] = useState(false);
+  const [usingFallback, setUsingFallback] = useState(true);
 
   useEffect(() => {
     const app = getFirebaseApp();
     if (!app) {
-      setData(fallback);
+      setData([]);
       setUsingFallback(true);
       setLoading(false);
       return;
@@ -685,25 +709,22 @@ export function usePendingAlerts(): {
           if (unsubscribed) return;
           const rows: PendingAlertRow[] = [];
           snap.forEach((docSnap) => {
-            const r = docSnap.data() as Record<string, unknown>;
-            rows.push({
-              id: docSnap.id,
-              crisisId: String(r.crisisId ?? r.crisis_id ?? ""),
-              message: String(r.message ?? r.body ?? ""),
-              severity: Number(r.severity ?? 0),
-              status: String(r.status ?? "pending_approval"),
-              channel: typeof r.channel === "string" ? r.channel : undefined,
-              issuedAt: typeof r.issuedAt === "string" ? r.issuedAt : undefined,
-            });
+            rows.push(pendingAlertFromDoc(docSnap.id, docSnap.data() as Record<string, unknown>));
           });
-          setData(rows.length ? rows : fallback);
-          setUsingFallback(rows.length === 0);
+          rows.sort((a, b) => {
+            const sa = a.stagingOrderIndex ?? 99;
+            const sb = b.stagingOrderIndex ?? 99;
+            if (sa !== sb) return sa - sb;
+            return (a.issuedAt ?? "").localeCompare(b.issuedAt ?? "");
+          });
+          setData(rows);
+          setUsingFallback(false);
           setLoading(false);
         },
         (err) => {
           logFirestoreHook("usePendingAlerts", err);
           if (!unsubscribed) {
-            setData(fallback);
+            setData([]);
             setUsingFallback(true);
             setLoading(false);
           }
@@ -711,7 +732,7 @@ export function usePendingAlerts(): {
       );
     } catch (err) {
       logFirestoreHook("usePendingAlerts", err);
-      setData(fallback);
+      setData([]);
       setUsingFallback(true);
       setLoading(false);
     }
@@ -720,7 +741,7 @@ export function usePendingAlerts(): {
       unsubscribed = true;
       unsubscribe?.();
     };
-  }, [fallback]);
+  }, []);
 
   return { data, loading, usingFallback };
 }

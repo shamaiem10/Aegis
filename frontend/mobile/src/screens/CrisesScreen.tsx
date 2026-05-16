@@ -27,7 +27,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList, "Crises">;
 export function CrisesScreen({ navigation }: { navigation: Nav }) {
   const { tc, r, contentWrap } = useAegisUi();
   const schemeDark = useColorScheme() === "dark";
-  const { data: unsortedRows, loading, usingFallback: demo } = useCrisisStream();
+  const { data: unsortedRows, loading, usingFallback: firestoreIssue } = useCrisisStream();
   const rows = useMemo(() => [...unsortedRows].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)), [unsortedRows]);
   const err = null;
 
@@ -126,7 +126,9 @@ export function CrisesScreen({ navigation }: { navigation: Nav }) {
 
       <Text style={[styles.h1, { color: tc.ink }]}>Active crises</Text>
       <Text style={[styles.hint, { color: tc.inkSoft }]}>
-        {demo ? "Islamabad v2 scenario — environmental + water + dust (bundled)." : "GET /api/v1/crises"}
+        {firestoreIssue
+          ? "Firebase disconnected or failing — bundle mock dossiers disabled. Configure EXPO_PUBLIC_* or check network/rules."
+          : "Live Firestore stream (updates in real time)."}
       </Text>
 
       {loading && !rows.length ? (
@@ -185,7 +187,8 @@ export function CrisesScreen({ navigation }: { navigation: Nav }) {
         ListEmptyComponent={
           !loading ? (
             <Text style={[styles.empty, { color: tc.inkSoft }]}>
-              No dossiers yet. Enable offline demo in Settings or run the pipeline.
+              No crises in Firestore yet. Seed data or run the FastAPI pipeline; offline demo stays off unless enabled in
+              Settings.
             </Text>
           ) : null
         }

@@ -99,7 +99,7 @@ class CrisisOrchestrator:
             _trace_step(
                 "signal_ingest",
                 "pull",
-                "Fetched hazard feeds, cache fallback, enrichment (historical + transport), optional supplemental mocks.",
+                "Fetched Pakistan mock category feeds (accidents, earthquakes, floods, disease); optional enrichment + supplemental mocks; disk cache replay on failure.",
                 inputs_summary=(
                     f"supplemental_only={req.supplemental_only}, "
                     f"merge_supplemental={req.include_supplemental_mock_signals}, "

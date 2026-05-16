@@ -30,6 +30,22 @@ export interface ResourceUnitApi {
   quantity_available: number;
 }
 
+export interface ResourcePoolItemApi {
+  type: string;
+  icon: string;
+  total: number;
+  deployed: number;
+  healthImpact?: string;
+}
+
+export interface ResourceInventoryApi {
+  region: string;
+  updatedAt: string;
+  units: ResourceUnitApi[];
+  items: ResourcePoolItemApi[];
+  sources?: { curated: number; openstreetmap: number };
+}
+
 export interface AllocationApi {
   units: ResourceUnitApi[];
   notes: string;
@@ -45,6 +61,15 @@ export interface CrisisDossierApi {
   notifications: { channel: string; title: string; body: string }[];
   created_at: string;
   meta?: Record<string, unknown>;
+}
+
+/** Mirrors backend `LiveCrisisMockBundle` — deterministic rehearsal payload from `GET .../crises/mock/live`. */
+export interface LiveCrisisMockBundleApi {
+  scenario_id: string;
+  label: string;
+  generated_at: string;
+  source: string;
+  crises: CrisisDossierApi[];
 }
 
 export interface SignalApi {

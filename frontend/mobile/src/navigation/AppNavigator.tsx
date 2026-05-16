@@ -68,7 +68,7 @@ function RootStackNavigator() {
     () =>
       function SimulationHeaderTitleInner() {
         return (
-          <Text style={{ fontSize: 12, fontWeight: "900", letterSpacing: 2.5, color: tc.ink }}>SIMULATION LIVE</Text>
+          <Text style={{ fontSize: 12, fontWeight: "900", letterSpacing: 2.5, color: tc.ink }}>BEFORE VS AFTER</Text>
         );
       },
     [tc.ink],

@@ -64,6 +64,15 @@ export interface CrisisDossierApi {
   meta: Record<string, unknown>;
 }
 
+/** Backend `LiveCrisisMockBundle` — `/api/v1/crises/mock/live` → envelope `data`. */
+export interface LiveCrisisMockBundleApi {
+  scenario_id: string;
+  label: string;
+  generated_at: string;
+  source: string;
+  crises: CrisisDossierApi[];
+}
+
 export interface PipelineRunBody {
   include_weather?: boolean;
   use_llm_classifier?: boolean;

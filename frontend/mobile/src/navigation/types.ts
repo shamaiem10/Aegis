@@ -12,8 +12,8 @@ export type RootStackParamList = {
   Landing: undefined;
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
   AlertAnalysis: { signalId?: string };
-  ActionPlan: undefined;
-  SimulationLive: undefined;
+  ActionPlan: { signalId?: string; crisisId?: string };
+  SimulationLive: { initialActionId?: string } | undefined;
   DemoMap: undefined;
   SignalsFeed: undefined;
   Crises: undefined;

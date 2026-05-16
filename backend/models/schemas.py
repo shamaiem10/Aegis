@@ -132,7 +132,7 @@ class PipelineRunRequest(BaseModel):
         description="Persist and replay last-good feeds when upstream APIs fail.",
     )
     include_enrichment_signals: bool = Field(
-        default=True,
+        default=False,
         description="Merge historical vulnerability + public-transport mocks where configured.",
     )
     use_discrete_resource_optimizer: bool = Field(
@@ -187,3 +187,13 @@ class CrisisDossier(BaseModel):
         if not data:
             raise ValueError("empty crisis document")
         return cls.model_validate(data)
+
+
+class LiveCrisisMockBundle(BaseModel):
+    """Deterministic “live” crisis rows for UI rehearsal / LAN demos (served as API wrapper `data`)."""
+
+    scenario_id: str = "pakistan_demo_v1"
+    label: str = "Built-in Pakistan rehearsal bundle"
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    source: str = "builtin"
+    crises: list[CrisisDossier]

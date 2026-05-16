@@ -27,9 +27,10 @@ const API_HEALTH_SOURCES: { id: string; name: string }[] = [
   { id: "firestore", name: "Firestore DB" },
   { id: "vertex", name: "Vertex AI" },
   { id: "sensor_gateway", name: "Sensor Gateway" },
-  { id: "usgs", name: "USGS" },
-  { id: "gdacs", name: "GDACS" },
-  { id: "reliefweb", name: "ReliefWeb" },
+  { id: "mock_pk_accidents", name: "Mock PK — Accidents" },
+  { id: "mock_pk_earthquakes", name: "Mock PK — Earthquakes" },
+  { id: "mock_pk_floods", name: "Mock PK — Floods" },
+  { id: "mock_pk_disease", name: "Mock PK — Disease / outbreaks" },
 ];
 
 async function main(): Promise<void> {

@@ -38,3 +38,29 @@ export function aqiBand(aqi: number): AQIBand {
   }
   return BANDS[BANDS.length - 1];
 }
+
+/** US EPA AQI from PM2.5 (µg/m³) — matches cloud-run air-quality helper. */
+export function calculateAQIFromPm25(pm25: number): number {
+  const c = Math.max(0, pm25);
+  const segments: { clo: number; chi: number; ilo: number; ihi: number }[] = [
+    { clo: 0, chi: 12.0, ilo: 0, ihi: 50 },
+    { clo: 12.1, chi: 35.4, ilo: 51, ihi: 100 },
+    { clo: 35.5, chi: 55.4, ilo: 101, ihi: 150 },
+    { clo: 55.5, chi: 150.4, ilo: 151, ihi: 200 },
+    { clo: 150.5, chi: 250.4, ilo: 201, ihi: 300 },
+    { clo: 250.5, chi: 350.4, ilo: 301, ihi: 400 },
+    { clo: 350.5, chi: 500.4, ilo: 401, ihi: 500 },
+  ];
+  for (const s of segments) {
+    if (c >= s.clo && c <= s.chi) {
+      return Math.round(((s.ihi - s.ilo) / (s.chi - s.clo)) * (c - s.clo) + s.ilo);
+    }
+  }
+  if (c > 500.4) return 500;
+  return 500;
+}
+
+/** Map AQI 0–500 to 0–100 bar width (environmental risk index). */
+export function aqiToRiskBarPercent(aqi: number): number {
+  return Math.min(100, Math.max(0, Math.round(aqi / 5)));
+}

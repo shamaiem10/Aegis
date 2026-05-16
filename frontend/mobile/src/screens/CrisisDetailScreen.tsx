@@ -13,6 +13,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 
+import { CrisisOrchestrationPanel } from "../components/aegis/CrisisOrchestrationPanel";
 import { getCrisis, patchCrisisStatus } from "../api/client";
 import type { CrisisDossierApi, CrisisStatusApi } from "../api/types";
 import type { RootStackParamList } from "../navigation/types";
@@ -318,6 +319,8 @@ export function CrisisDetailScreen({ route, navigation }: Props) {
               </Text>
             ))}
           </Section>
+
+          <CrisisOrchestrationPanel dossier={d} />
 
           <Section title="Swipe actions (demo)" tc={tc}>
             <Text style={[styles.sub, { color: tc.inkSoft }]}>

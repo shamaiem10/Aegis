@@ -1,4 +1,4 @@
-import type { CrisisDossierApi, PipelineRunBody } from "./aegis-types";
+import type { CrisisDossierApi, LiveCrisisMockBundleApi, PipelineRunBody } from "./aegis-types";
 
 export const STORAGE_API_BASE = "aegis_api_base_url";
 
@@ -17,6 +17,18 @@ export function setConfiguredApiBase(url: string) {
   if (typeof window === "undefined") return;
   if (!u) window.localStorage.removeItem(STORAGE_API_BASE);
   else window.localStorage.setItem(STORAGE_API_BASE, u);
+}
+
+/** Crisis list/detail read from typed mock rehearsal bundle. Set `VITE_USE_MOCK_LIVE_CRISIS=1`. */
+export function mockLiveCrisisBundleEnabled(): boolean {
+  return typeof import.meta !== "undefined" && import.meta.env?.VITE_USE_MOCK_LIVE_CRISIS === "1";
+}
+
+function filterCrisesParams(rows: CrisisDossierApi[], params?: { limit?: number; status?: string }): CrisisDossierApi[] {
+  let out = [...rows];
+  if (params?.status) out = out.filter((d) => d.status === params.status);
+  if (params?.limit != null) out = out.slice(0, params.limit);
+  return out;
 }
 
 export class AegisApiError extends Error {
@@ -48,7 +60,15 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     throw new AegisApiError(res.statusText || "Request failed", res.status, text);
   }
   if (!text) return undefined as T;
-  return JSON.parse(text) as T;
+  const parsed: unknown = JSON.parse(text);
+  if (parsed && typeof parsed === "object" && "success" in parsed && "data" in parsed) {
+    const p = parsed as { success?: boolean; data?: T; error?: string };
+    if (p.success === false) {
+      throw new AegisApiError(p.error || "API returned success=false", res.status, text);
+    }
+    return p.data as T;
+  }
+  return parsed as T;
 }
 
 export async function fetchHealth(): Promise<{ status: string; service: string }> {
@@ -59,6 +79,10 @@ export async function listCrises(params?: {
   limit?: number;
   status?: string;
 }): Promise<CrisisDossierApi[]> {
+  if (mockLiveCrisisBundleEnabled()) {
+    const bundle = await apiFetch<LiveCrisisMockBundleApi>(`/api/v1/crises/mock/live`);
+    return filterCrisesParams(bundle?.crises ?? [], params);
+  }
   const q = new URLSearchParams();
   if (params?.limit != null) q.set("limit", String(params.limit));
   if (params?.status) q.set("status", params.status);
@@ -67,6 +91,12 @@ export async function listCrises(params?: {
 }
 
 export async function getCrisis(id: string): Promise<CrisisDossierApi> {
+  if (mockLiveCrisisBundleEnabled()) {
+    const bundle = await apiFetch<LiveCrisisMockBundleApi>(`/api/v1/crises/mock/live`);
+    const hit = bundle?.crises?.find((c) => c.crisis_id === id);
+    if (hit) return hit;
+    throw new AegisApiError(`mock-live: crisis not found (${id})`, 404, "");
+  }
   return apiFetch(`/api/v1/crises/${encodeURIComponent(id)}`);
 }
 
