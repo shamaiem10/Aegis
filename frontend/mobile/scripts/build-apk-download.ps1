@@ -17,7 +17,7 @@ if (-not $SkipBuild) {
   Write-Host "Starting EAS build (Android APK, profile: preview)..."
   Push-Location $MobileRoot
   try {
-    npx eas-cli build --platform android --profile preview --non-interactive
+    npx.cmd eas-cli build --platform android --profile preview
   } finally {
     Pop-Location
   }
@@ -25,9 +25,9 @@ if (-not $SkipBuild) {
   Write-Host "Downloading latest finished build artifact..."
   Push-Location $MobileRoot
   try {
-    npx eas-cli build:download --platform android --profile preview --output $Staged --latest-finished
+    npx.cmd eas-cli build:download --platform android --profile preview --output $Staged --latest-finished
   } catch {
-    Write-Host "eas build:download failed — download APK from https://expo.dev and save as:"
+    Write-Host "eas build:download failed - download APK from https://expo.dev and save as:"
     Write-Host "  $Staged"
     exit 1
   } finally {
@@ -36,7 +36,7 @@ if (-not $SkipBuild) {
 }
 
 if (-not (Test-Path $Staged)) {
-  Write-Host "Missing $Staged — place the APK there or re-run without -SkipBuild."
+  Write-Host "Missing $Staged - place the APK there or re-run without -SkipBuild."
   exit 1
 }
 

@@ -36,4 +36,4 @@ if (-not $metroHost) {
 $env:REACT_NATIVE_PACKAGER_HOSTNAME = $metroHost
 Write-Host ('Metro advertises REACT_NATIVE_PACKAGER_HOSTNAME=' + $metroHost + ' (use exp://' + $metroHost + ':PORT in QR instead of 127.0.0.1).' ) -ForegroundColor Green
 
-& npx expo start --lan @args
+npm.cmd run start:lan -- @args

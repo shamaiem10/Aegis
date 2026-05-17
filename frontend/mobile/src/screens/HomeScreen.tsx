@@ -40,6 +40,20 @@ function severityToPriority(sev: number): AlertPriority {
   return "LOW";
 }
 
+function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 function formatRelativePkt(iso: string): string {
   const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
   if (m < 1) return "just now";
@@ -84,7 +98,7 @@ export function HomeScreen() {
   const isFocused = useIsFocused();
   const schemeDark = useColorScheme() === "dark";
   const { r } = useAegisUi();
-  const { region, locationError } = useForegroundRegion();
+  const { region, locationError, cityName } = useForegroundRegion();
   const [basePreview, setBasePreview] = useState("");
   const [demoMode, setDemoMode] = useState(false);
   const [mapDelta, setMapDelta] = useState(0.06);
@@ -194,12 +208,23 @@ export function HomeScreen() {
     const fromApi = (signals: SignalApi[]): HomeAlertRowData[] =>
       signals.map((s) => {
         const display = formatAlertDisplay(s);
+        let distStr = "";
+        if (region) {
+          const d = haversineDistance(region.latitude, region.longitude, s.lat, s.lon);
+          distStr = d < 10 ? d.toFixed(1) + "km" : Math.round(d) + "km";
+        }
+        const timeLineParts = [
+          formatRelativePkt(s.recorded_at),
+          display.timeLabel,
+          distStr || null
+        ].filter(Boolean);
+
         return {
           key: s.id,
           signalId: s.id,
           iconName: alertIconForSignal(s.kind, s.text),
           title: display.title,
-          timeLine: `${formatRelativePkt(s.recorded_at)} · ${display.timeLabel}`,
+          timeLine: timeLineParts.join(" · "),
           priority: severityToPriority(s.severity_hint),
         };
       });
@@ -207,7 +232,7 @@ export function HomeScreen() {
     if (pkFeedAll.length > 0) return fromApi(pkFeedAll);
     if (demoMode) return DESIGN_ALERTS.map((d, i) => ({ ...d, key: `design-${i}` }));
     return [];
-  }, [pkFeedAll, demoMode]);
+  }, [pkFeedAll, demoMode, region]);
 
   const recentAlerts = useMemo(() => alertRows.slice(0, HOME_ALERT_LIMIT), [alertRows]);
 
@@ -275,9 +300,10 @@ export function HomeScreen() {
   const allocHint = useMemo(() => allocationSummary(dashCrises), [dashCrises]);
 
   const localityLabel = useMemo(() => {
+    if (cityName) return cityName;
     const reg = pkFeedAll[0]?.region?.trim() || dashCrises[0]?.fused?.[0]?.region?.trim();
     return reg && reg.length > 0 ? reg.slice(0, 28) : "Operations";
-  }, [pkFeedAll, dashCrises]);
+  }, [pkFeedAll, dashCrises, cityName]);
 
   const pulseText = useMemo(() => {
     const s = coerceDisplayText(pulseMessage?.summary as unknown);

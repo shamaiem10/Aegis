@@ -118,11 +118,28 @@ function VelocityChart({ schemeDark }: { schemeDark: boolean }) {
   );
 }
 
+import { useForegroundRegion } from "../hooks/useForegroundRegion";
+
+function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 export function SignalsFeedScreen({ navigation }: { navigation: Nav }) {
   const { tc, r, contentWrap } = useAegisUi();
   const schemeDark = useColorScheme() === "dark";
   const [filter, setFilter] = useState<FilterKey>("all");
   const { data, loading } = useSignalStream(filter === "all" ? undefined : filter);
+  const { region } = useForegroundRegion();
 
   const counts = useMemo(() => {
     const air = data.filter((s) => categoryOf(s) === "air").length;
@@ -223,6 +240,13 @@ export function SignalsFeedScreen({ navigation }: { navigation: Nav }) {
           const cred = credPct(item);
           const flags = item.payload?.flags as string[] | undefined;
           const link = item.payload?.linked_crisis_id as string | undefined;
+          
+          let distStr = "—";
+          if (region) {
+            const d = haversineDistance(region.latitude, region.longitude, item.lat, item.lon);
+            distStr = d < 10 ? d.toFixed(1) + "km" : Math.round(d) + "km";
+          }
+
           return (
             <Pressable onPress={() => navigation.navigate("AlertAnalysis", { signalId: item.id })}>
               <Card style={[styles.card, { borderColor: tc.border, backgroundColor: tc.card }]}>
@@ -248,6 +272,7 @@ export function SignalsFeedScreen({ navigation }: { navigation: Nav }) {
                   <Metric label="sev" val={item.severity_hint} tc={tc} />
                   <Metric label="lat" val={parseFloat(item.lat.toFixed(2))} tc={tc} />
                   <Metric label="lon" val={parseFloat(item.lon.toFixed(2))} tc={tc} />
+                  <MetricStr label="dist" val={distStr} tc={tc} />
                 </View>
               </Card>
             </Pressable>
@@ -264,6 +289,15 @@ export function SignalsFeedScreen({ navigation }: { navigation: Nav }) {
 }
 
 function Metric({ label, val, tc }: { label: string; val: number; tc: ReturnType<typeof useThemeCiro> }) {
+  return (
+    <View style={metricStyles.cell}>
+      <Text style={[metricStyles.lab, { color: tc.inkSoft }]}>{label}</Text>
+      <Text style={[metricStyles.val, { color: tc.ink }]}>{val}</Text>
+    </View>
+  );
+}
+
+function MetricStr({ label, val, tc }: { label: string; val: string; tc: ReturnType<typeof useThemeCiro> }) {
   return (
     <View style={metricStyles.cell}>
       <Text style={[metricStyles.lab, { color: tc.inkSoft }]}>{label}</Text>

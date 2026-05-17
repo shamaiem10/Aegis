@@ -1,6 +1,6 @@
 import type { ExpoConfig } from "expo/config";
 
-const googleMapsKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
+const googleMapsKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || "AIzaSyDzisb8lb9bWtrsqu2ExChLliqvB3btGuU";
 
 export default (): ExpoConfig => ({
   name: "Aegis",
@@ -37,10 +37,10 @@ export default (): ExpoConfig => ({
   },
   extra: {
     eas: {
-      projectId: "acdadc1a-d363-4149-a705-04df75308746",
+      projectId: "8c6914df-6b74-4235-8c4b-004debe6d59d",
     },
   },
-  owner: "shamaiem",
+  owner: "kiranwaqar",
   plugins: [
     "expo-font",
     [

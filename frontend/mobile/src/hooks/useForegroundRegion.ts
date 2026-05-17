@@ -11,6 +11,7 @@ import type { MapRegion } from "../types/map-region";
 export function useForegroundRegion() {
   const [region, setRegion] = useState<MapRegion | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cityName, setCityName] = useState<string>("");
 
   useEffect(() => {
     let cancelled = false;
@@ -22,6 +23,7 @@ export function useForegroundRegion() {
           if (!cancelled) {
             setError("Location off — defaulting to Islamabad (Pakistan).");
             setRegion(PAKISTAN_DEFAULT_REGION);
+            setCityName("Islamabad, ICT");
           }
           return;
         }
@@ -34,6 +36,7 @@ export function useForegroundRegion() {
           if (!isLatLonInPakistan(lat, lon)) {
             setError("You appear to be outside Pakistan — showing national overview.");
             setRegion(PAKISTAN_OVERVIEW_REGION);
+            setCityName("Pakistan");
             return;
           }
           setRegion({
@@ -42,11 +45,30 @@ export function useForegroundRegion() {
             latitudeDelta: 0.25,
             longitudeDelta: 0.25,
           });
+
+          try {
+            const geo = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
+            if (geo && geo.length > 0) {
+              const first = geo[0];
+              const cityStr = first.city || first.district || first.subregion || "";
+              const regStr = first.region || "";
+              let full = cityStr;
+              if (regStr && regStr !== cityStr) {
+                full = cityStr ? `${cityStr}, ${regStr}` : regStr;
+              }
+              if (full && !cancelled) {
+                setCityName(full);
+              }
+            }
+          } catch {
+            /* ignore reverse geocode fail */
+          }
         }
       } catch {
         if (!cancelled) {
           setError("Could not read location.");
           setRegion(PAKISTAN_DEFAULT_REGION);
+          setCityName("Islamabad, ICT");
         }
       }
     })();
@@ -56,5 +78,5 @@ export function useForegroundRegion() {
     };
   }, []);
 
-  return { region, locationError: error };
+  return { region, locationError: error, cityName };
 }

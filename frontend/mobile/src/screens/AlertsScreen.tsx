@@ -23,6 +23,22 @@ import { signalListKey } from "../utils/signalListKey";
 import { alertIconForSignal } from "../utils/alertIcons";
 import { formatAlertDisplayCompact } from "../utils/formatAlertDisplay";
 
+import { useForegroundRegion } from "../hooks/useForegroundRegion";
+
+function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 function severityToPriority(sev: number): AlertPriority {
   if (sev >= 8) return "HIGH";
   if (sev >= 5) return "MED";
@@ -47,6 +63,7 @@ export function AlertsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<PkAlertCategoryFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const { region } = useForegroundRegion();
 
   const load = useCallback(async () => {
     try {
@@ -112,16 +129,21 @@ export function AlertsScreen() {
     () =>
       filtered.map((item, i) => {
         const display = formatAlertDisplayCompact(item);
+        let distStr = "";
+        if (region) {
+          const d = haversineDistance(region.latitude, region.longitude, item.lat, item.lon);
+          distStr = d < 10 ? d.toFixed(1) + "km" : Math.round(d) + "km";
+        }
         return {
           key: signalListKey(item, i),
           signalId: item.id,
           iconName: alertIconForSignal(item.kind, item.text),
           title: display.title,
-          meta: display.meta,
+          meta: distStr ? `${display.meta} · ${distStr}` : display.meta,
           priority: severityToPriority(item.severity_hint),
         };
       }),
-    [filtered],
+    [filtered, region],
   );
 
   const misinfo = data.some((s) => {

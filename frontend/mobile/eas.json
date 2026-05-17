@@ -6,6 +6,19 @@
   "build": {
     "preview": {
       "distribution": "internal",
+      "env": {
+        "METRO_HOST": "192.168.221.152",
+        "EXPO_PUBLIC_API_URL": "https://crisis-api-gateway-wget7zmola-uc.a.run.app",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyDzisb8lb9bWtrsqu2ExChLliqvB3btGuU",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyB8bx5c6v_ZfwLs1RVmtvNrw7EVGIfWVdM",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "aegis-496207.firebaseapp.com",
+        "EXPO_PUBLIC_GCP_PROJECT_ID": "aegis-496207",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "aegis-496207.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "25942592305",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:25942592305:web:4b966939750bee481efe10",
+        "EXPO_PUBLIC_PK_MOCK_ALERTS_URL": "https://pk-mock-category-apis.vercel.app",
+        "EXPO_PUBLIC_PK_RESOURCES_URL": "https://pk-resource-inventory-api.vercel.app"
+      },
       "android": {
         "buildType": "apk"
       }
