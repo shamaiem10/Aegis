@@ -2,8 +2,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
 
 import { DEFAULT_BACKEND_PORT } from "../config/backendDefaults";
+import { pkResourcesDeployedBase } from "../config/pkResources";
 
 import {
+  demoAllocateResources,
   demoGetCrisis,
   demoListCrises,
   demoPatchStatus,
@@ -30,6 +32,25 @@ export const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
 
 /** Antigravity 7-agent pipeline can take 60–120s with live Gemini. */
 export const PIPELINE_REQUEST_TIMEOUT_MS = 180_000;
+
+/** Strip HTML error pages and JSON envelopes into a short user-facing string. */
+export function parseHttpErrorMessage(text: string): string {
+  const t = text.trim();
+  if (!t) return "Request failed.";
+  if (t.startsWith("<!") || t.includes("<html")) {
+    const pre = t.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i)?.[1];
+    if (pre) return summarizeBackendError(pre.trim());
+    return "Server route not found — restart cloud-run after pulling latest code.";
+  }
+  try {
+    const j = JSON.parse(t) as { error?: string | null; detail?: string; message?: string };
+    const inner = j.error ?? j.detail ?? j.message;
+    if (typeof inner === "string" && inner.trim()) return summarizeBackendError(inner.trim());
+  } catch {
+    /* plain text */
+  }
+  return summarizeBackendError(t);
+}
 
 /** Short message for UI banners; avoids multi-line errors inside tiny pills. */
 export function summarizeBackendError(message: string): string {
@@ -128,22 +149,33 @@ function migrateStoredBaseToAgentsPort(stored: string, env?: string): string | n
 export async function getApiBase(): Promise<string> {
   const env = process.env.EXPO_PUBLIC_API_URL?.trim()?.replace(/\/$/, "");
 
+  // .env wins over stale Settings (fixes wrong 127.0.0.1 / old LAN IP after IP change).
+  if (env) {
+    try {
+      const stored = await AsyncStorage.getItem(STORAGE_API_BASE);
+      const s = stored?.trim().replace(/\/$/, "") ?? "";
+      const migrated = s ? migrateStoredBaseToAgentsPort(s, env) : null;
+      const badLocal =
+        Platform.OS !== "web" &&
+        (s.includes("127.0.0.1") || s.includes("localhost") || s.includes("10.0.2.2"));
+      if (!s || badLocal || (migrated && migrated !== s) || s !== env) {
+        await AsyncStorage.setItem(STORAGE_API_BASE, env);
+      }
+    } catch {
+      /* ignore */
+    }
+    return env;
+  }
+
   try {
     const stored = await AsyncStorage.getItem(STORAGE_API_BASE);
     if (stored?.trim()) {
       const s = stored.trim().replace(/\/$/, "");
-      const migrated = migrateStoredBaseToAgentsPort(s, env);
-      if (migrated && migrated !== s) {
-        await AsyncStorage.setItem(STORAGE_API_BASE, migrated);
-        return migrated;
-      }
       return s;
     }
   } catch {
     /* ignore */
   }
-
-  if (env) return env;
 
   return defaultApiBase();
 }
@@ -179,38 +211,25 @@ export function pkMockAlertsRemoteBase(): string | null {
   return e ? e.replace(/\/$/, "") : null;
 }
 
-/** Vercel / cloud-run proxy for Islamabad emergency resource inventory (+ OSM). */
-export function pkResourcesRemoteBase(): string | null {
-  const direct = process.env.EXPO_PUBLIC_PK_RESOURCES_URL?.trim();
-  if (direct) return direct.replace(/\/$/, "");
-  return null;
+/** Deployed inventory API origin (Vercel). Never cloud-run / LAN — use EXPO_PUBLIC_PK_RESOURCES_URL to override. */
+export function pkResourcesRemoteBase(): string {
+  return pkResourcesDeployedBase();
 }
 
-function resourceInventoryUrl(refresh = false): string {
-  const remote = pkResourcesRemoteBase();
+/** GET {deployed}/api/v1/resources/inventory/islamabad */
+export function pkResourcesInventoryUrl(refresh = false): string {
   const q = refresh ? "?refresh=1" : "";
-  if (remote) return `${remote}/api/v1/resources/inventory/islamabad${q}`;
-  return `/api/v1/resources/inventory${q}`;
+  return `${pkResourcesDeployedBase()}/api/v1/resources/inventory/islamabad${q}`;
 }
 
+/** Load inventory from deployed pk-resource-inventory-api (not cloud-run). */
 export async function fetchResourceInventory(refresh = false): Promise<ResourceInventoryApi> {
-  const remote = pkResourcesRemoteBase();
-  if (remote) {
-    const envelope = await fetchJsonParsed<{
-      success: boolean;
-      data: ResourceInventoryApi;
-      error: string | null;
-    }>(resourceInventoryUrl(refresh), 60000);
-    if (!envelope.success || !envelope.data) {
-      throw new Error(envelope.error ?? "resource_inventory_failed");
-    }
-    return envelope.data;
-  }
-  const envelope = await request<{
+  const url = pkResourcesInventoryUrl(refresh);
+  const envelope = await fetchJsonParsed<{
     success: boolean;
     data: ResourceInventoryApi;
     error: string | null;
-  }>(resourceInventoryUrl(refresh));
+  }>(url, 60000);
   if (!envelope.success || !envelope.data) {
     throw new Error(envelope.error ?? "resource_inventory_failed");
   }
@@ -250,7 +269,7 @@ async function fetchJsonParsed<T>(
   }
   const text = await res.text();
   if (!res.ok) {
-    throw new Error(text || `${res.status} ${res.statusText}`);
+    throw new Error(parseHttpErrorMessage(text || `${res.status} ${res.statusText}`));
   }
   return parseFetchedJsonBody<T>(text);
 }
@@ -295,9 +314,35 @@ async function request<T>(
   }
   const text = await res.text();
   if (!res.ok) {
-    throw new Error(text || `${res.status} ${res.statusText}`);
+    throw new Error(parseHttpErrorMessage(text || `${res.status} ${res.statusText}`));
   }
   return parseFetchedJsonBody<T>(text);
+}
+
+/** Quick check that the phone can reach cloud-run (not just Firebase / Vercel). */
+export async function probeCloudRunBase(): Promise<{
+  reachable: boolean;
+  base: string;
+  detail: string;
+}> {
+  const base = await getApiBase();
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8_000);
+    const res = await fetch(`${base}/health`, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) {
+      return { reachable: false, base, detail: `HTTP ${res.status}` };
+    }
+    const json = (await res.json()) as { status?: string; success?: boolean };
+    if (json.success === false) {
+      return { reachable: false, base, detail: "health returned success=false" };
+    }
+    return { reachable: true, base, detail: String(json.status ?? "ok") };
+  } catch (e) {
+    const msg = (e as Error).name === "AbortError" ? "Timed out (8s)" : (e as Error).message;
+    return { reachable: false, base, detail: msg };
+  }
 }
 
 export async function fetchHealth(): Promise<{ status: string }> {
@@ -603,6 +648,41 @@ export async function listAgentTraces(limit = 40): Promise<
 > {
   if (await getDemoModeResolved()) return [];
   return request(`/api/v1/traces?limit=${limit}`);
+}
+
+export type ResourceAssignmentApi = {
+  resource_id: string;
+  quantity: number;
+};
+
+export function formatAllocationError(message: string): string {
+  const m = message.trim();
+  if (m === "crisis_not_found" || m === "not_found") {
+    return "Crisis record missing on server — reload the crisis list and try again.";
+  }
+  if (m.startsWith("insufficient:")) {
+    const parts = m.split(":");
+    const avail = parts[2] ?? "?";
+    const need = parts[3] ?? "?";
+    return `Not enough units in pool (${avail} available, requested ${need}).`;
+  }
+  if (m.startsWith("unknown_resource:")) {
+    return "That resource is not in the inventory.";
+  }
+  return summarizeBackendError(m);
+}
+
+export async function allocateCrisisResources(
+  crisisId: string,
+  assignments: ResourceAssignmentApi[],
+): Promise<CrisisDossierApi> {
+  if (await getDemoModeResolved()) {
+    return demoAllocateResources(crisisId, assignments);
+  }
+  return request(`/api/v1/crises/${encodeURIComponent(crisisId)}/allocate`, {
+    method: "POST",
+    body: JSON.stringify({ assignments }),
+  });
 }
 
 export async function patchCrisisStatus(

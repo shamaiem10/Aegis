@@ -1,6 +1,17 @@
-import type { AgentApiResponse, AgentArtifactBundle, ActionPlanResult } from "./agentTypes";
-import type { SignalApi } from "./types";
-import { getApiBase } from "./client";
+import type {
+  AgentApiResponse,
+  AgentArtifactBundle,
+  ActionPlanResult,
+  AiSeverityIndexResult,
+  CrisisSimulationResult,
+  FalseAlarmScreenResult,
+  ResourceScenarioAdjustment,
+  StakeholderDraftResult,
+} from "./agentTypes";
+import type { CrisisDossierApi, SignalApi } from "./types";
+import type { PakistanLiveEnvSnapshot } from "./pakistanEnvLive";
+import type { PakistanEnvCityKey } from "./pakistanEnvLive";
+import { getApiBase, listSignals, listCrises, probeCloudRunBase } from "./client";
 import { AgentServiceError, formatAgentFetchError } from "../utils/agentErrors";
 
 function agentsBaseUrl(base: string): string {
@@ -9,18 +20,12 @@ function agentsBaseUrl(base: string): string {
 }
 
 function assertLiveArtifacts(bundle: AgentArtifactBundle): void {
-  if (bundle.degradedAgents?.length) {
+  if (bundle.degradedAgents?.length && !bundle.triage && !bundle.analysis) {
     throw new AgentServiceError(
       `Live agents unavailable: ${bundle.degradedAgents.join(", ")}`,
     );
   }
-  if (
-    bundle.triage?.degradedMode ||
-    bundle.analysis?.degradedMode ||
-    bundle.actionPlan?.degradedMode
-  ) {
-    throw new AgentServiceError("Server returned rule-based output; Gemini agents are required.");
-  }
+  // degradedMode: show rule-based triage/analysis with in-UI warning (no hard block)
 }
 
 function assertLiveActionPlan(plan: ActionPlanResult): void {
@@ -30,6 +35,63 @@ function assertLiveActionPlan(plan: ActionPlanResult): void {
 }
 
 const AGENT_FETCH_MS = 120_000;
+
+export type AgentsHealthData = { gemini?: string; groq?: string; status?: string };
+
+export type BatchEnrichResult = {
+  enriched: number;
+  results: { success: boolean; data: AgentArtifactBundle | null; error: string | null }[];
+};
+
+async function agentFetchJson<T>(url: string, init?: RequestInit): Promise<AgentApiResponse<T>> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    return (await res.json()) as AgentApiResponse<T>;
+  } catch (e) {
+    const base = await getApiBase();
+    const msg =
+      (e as Error).name === "AbortError"
+        ? "Agent request timed out (30s)"
+        : (e as Error).message || "Network request failed";
+    throw formatAgentFetchError(msg, base);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function fetchAgentsHealth(): Promise<{ ok: boolean; detail: string }> {
+  const probe = await probeCloudRunBase();
+  if (!probe.reachable) {
+    return { ok: false, detail: probe.detail };
+  }
+  const url = `${agentsBaseUrl(probe.base)}/health`;
+  try {
+    const json = await agentFetchJson<AgentsHealthData>(url, { method: "GET" });
+    if (json.success) {
+      return { ok: true, detail: json.data?.gemini === "ok" ? "LLM reachable" : "Agents API online" };
+    }
+    return { ok: true, detail: "API reachable (agent health degraded)" };
+  } catch {
+    return { ok: true, detail: probe.detail };
+  }
+}
+
+export async function batchEnrichAlerts(signals: SignalApi[], max = 5): Promise<BatchEnrichResult> {
+  const slice = signals.filter((s) => s?.id).slice(0, max);
+  const base = await getApiBase();
+  const url = `${agentsBaseUrl(base)}/batch/enrich-alerts`;
+  const json = await agentFetchJson<BatchEnrichResult>(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ signals: slice }),
+  });
+  if (!json.success || !json.data) {
+    throw formatAgentFetchError(json.error ?? "batch_enrich_failed", base);
+  }
+  return json.data;
+}
 
 async function agentPost<T>(path: string, body: unknown): Promise<T> {
   const base = await getApiBase();
@@ -65,27 +127,138 @@ async function agentPost<T>(path: string, body: unknown): Promise<T> {
   return json.data;
 }
 
-/** Alert analysis: triage + dossier only (faster — action plan loads on its screen). */
+/** Contextual Groq pass: all alerts + deployed resource inventory → triage, analysis, plan, priority queue. */
 export async function enrichAlertWithAgents(signal: SignalApi): Promise<AgentArtifactBundle> {
+  let allSignals: SignalApi[] = [];
+  try {
+    allSignals = await listSignals();
+  } catch {
+    allSignals = [signal];
+  }
+  if (!allSignals.some((s) => s.id === signal.id)) {
+    allSignals = [signal, ...allSignals];
+  }
+
   const data = await agentPost<AgentArtifactBundle>(
-    `/alerts/${encodeURIComponent(signal.id)}/enrich?steps=triage,analysis`,
-    { signal },
+    `/alerts/${encodeURIComponent(signal.id)}/contextual-enrich`,
+    { signal, allSignals },
   );
   if (!data.triage || !data.analysis) {
-    throw new AgentServiceError("Incomplete agent response (triage or analysis missing).");
+    throw new AgentServiceError("Incomplete contextual agent response (triage or analysis missing).");
   }
   assertLiveArtifacts(data);
   return data;
 }
 
 export async function fetchActionPlanForSignal(signal: SignalApi): Promise<ActionPlanResult> {
-  const crisisId = `pk-${signal.id}`;
-  const data = await agentPost<ActionPlanResult>(
-    `/crises/${encodeURIComponent(crisisId)}/action-plan`,
-    { signal },
+  const bundle = await enrichAlertWithAgents(signal);
+  const plan = bundle.actionPlan;
+  if (!plan?.tasks?.length) {
+    throw new AgentServiceError("Contextual action plan missing tasks.");
+  }
+  return { ...plan, contextual: bundle.contextual };
+}
+
+export async function fetchAiSeverityIndex(
+  envIndex: PakistanLiveEnvSnapshot,
+  selectedCity: PakistanEnvCityKey,
+  signals?: SignalApi[],
+  crises?: CrisisDossierApi[],
+): Promise<AiSeverityIndexResult> {
+  let alertRows = signals;
+  let crisisRows = crises;
+  if (!alertRows) {
+    try {
+      alertRows = await listSignals();
+    } catch {
+      alertRows = [];
+    }
+  }
+  if (!crisisRows) {
+    try {
+      crisisRows = await listCrises({ limit: 20 });
+    } catch {
+      crisisRows = [];
+    }
+  }
+  return agentPost<AiSeverityIndexResult>("/severity-index", {
+    envIndex: {
+      heat: envIndex.heat,
+      air: envIndex.air,
+      flood: envIndex.flood,
+      hasAny: envIndex.hasAny,
+      pakistanAqi: envIndex.pakistanAqi,
+    },
+    selectedCity,
+    signals: alertRows,
+    crises: crisisRows,
+  });
+}
+
+export async function runCrisisResourceSimulation(
+  focusSignal: SignalApi,
+  adjustments: ResourceScenarioAdjustment[],
+  signals?: SignalApi[],
+  crises?: CrisisDossierApi[],
+): Promise<CrisisSimulationResult> {
+  let alertRows = signals;
+  let crisisRows = crises;
+  if (!alertRows) {
+    try {
+      alertRows = await listSignals();
+    } catch {
+      alertRows = [focusSignal];
+    }
+  }
+  if (!alertRows.some((s) => s.id === focusSignal.id)) {
+    alertRows = [focusSignal, ...alertRows];
+  }
+  if (!crisisRows) {
+    try {
+      crisisRows = await listCrises({ limit: 20 });
+    } catch {
+      crisisRows = [];
+    }
+  }
+  return agentPost<CrisisSimulationResult>("/crisis-simulation", {
+    focusSignal,
+    focusSignalId: focusSignal.id,
+    adjustments,
+    signals: alertRows,
+    crises: crisisRows,
+  });
+}
+
+export async function draftStakeholderAlerts(
+  signal: SignalApi,
+  context?: { incidentSummary?: string; triagePriority?: string },
+): Promise<StakeholderDraftResult> {
+  return agentPost<StakeholderDraftResult>("/stakeholder-alerts/draft", {
+    signal,
+    ...context,
+  });
+}
+
+export async function fetchFalseAlarmQueue(): Promise<FalseAlarmScreenResult | null> {
+  const base = await getApiBase();
+  const url = `${agentsBaseUrl(base)}/false-alarm/queue`;
+  const json = await agentFetchJson<FalseAlarmScreenResult>(url, { method: "GET" });
+  if (!json.success) return null;
+  return json.data;
+}
+
+export async function screenFalseAlarms(signals: SignalApi[]): Promise<FalseAlarmScreenResult> {
+  return agentPost<FalseAlarmScreenResult>("/false-alarm/screen", { signals });
+}
+
+export async function resolveFalseAlarm(
+  signalId: string,
+  status: "confirmed_false_alarm" | "cleared",
+): Promise<FalseAlarmScreenResult> {
+  return agentPost<FalseAlarmScreenResult>(
+    `/false-alarm/${encodeURIComponent(signalId)}/resolve`,
+    { status },
   );
-  assertLiveActionPlan(data);
-  return data;
 }
 
 export async function enrichCrisisWithAgents(

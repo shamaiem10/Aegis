@@ -1,4 +1,4 @@
-import { generateGeminiJson } from '../geminiGenerate';
+import { agentLlmProviders, generateGeminiJson } from '../geminiGenerate';
 import type {
   ActionPlanResult,
   AlertTriageResult,
@@ -57,10 +57,10 @@ export async function runCombinedEnrichmentAgent(
   analysis: CrisisAnalysisResult;
   actionPlan: ActionPlanResult;
 }> {
-  const parsed = await generateGeminiJson({
-    instruction: INSTRUCTION,
-    input: { signal, crisisId },
-  });
+  const parsed = await generateGeminiJson(
+    { instruction: INSTRUCTION, input: { signal, crisisId } },
+    { providers: agentLlmProviders() },
+  );
 
   const triage = parsed.triage as AlertTriageResult | undefined;
   const analysis = parsed.analysis as CrisisAnalysisResult | undefined;

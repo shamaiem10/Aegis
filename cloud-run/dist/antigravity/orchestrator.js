@@ -181,7 +181,11 @@ Output: { "actionPlans": [{ "crisisId", "phases": [{ "name", "actions", "owner",
         if (!plan.crisisId)
             continue;
         const phases = plan.phases || [];
-        const bodyText = phases.map(p => `- ${p.name} (Owner: ${p.owner}, ETA: ${p.etaMin}m)\n  Resources: ${p.assignedResourceUnitId || 'None'}\n  Actions: ${(p.actions || []).join(', ')}`).join('\n\n');
+        const bodyText = phases.map(p => {
+            const actionsRaw = p.actions || p.action || [];
+            const actionsArray = Array.isArray(actionsRaw) ? actionsRaw : [actionsRaw];
+            return `- ${p.name || 'Phase'} (Owner: ${p.owner || 'N/A'}, ETA: ${p.etaMin || 0}m)\n  Resources: ${p.assignedResourceUnitId || 'None'}\n  Actions: ${actionsArray.join(', ')}`;
+        }).join('\n\n');
         alertDrafts.push({
             crisisId: plan.crisisId,
             audienceType: 'Action Plan',
@@ -221,8 +225,11 @@ Output: { "actionPlans": [{ "crisisId", "phases": [{ "name", "actions", "owner",
             const docId = `${draft.crisisId}-${draft.audienceType}`;
             await (0, safeFirestore_1.safeFirestoreWrite)(`alerts/${docId}`, () => firebase_admin_1.db.collection('alerts').doc(docId).set({
                 ...draft,
+                messageText: String(draft.body ?? draft.messageText ?? ''),
+                englishText: String(draft.body ?? draft.englishText ?? ''),
                 status: 'pending_approval',
                 generatedAt: new Date().toISOString(),
+                issuedAt: new Date().toISOString(),
             }));
         }
     }

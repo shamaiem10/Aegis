@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import type { ActionPlanResult } from "../../api/agentTypes";
 import type { IonName } from "../../utils/alertIcons";
-import { Card, GradientHeroCard, MiniBar } from "./AppShell";
+import { Card, MiniBar } from "./AppShell";
 import { useAegisUi } from "../../hooks/useAegisUi";
 import { useThemeCiro } from "../../theme/useThemeCiro";
 
@@ -47,8 +47,8 @@ export function ActionPlanLayout({
 
   if (loading) {
     return (
-      <View style={[styles.centered, { backgroundColor: tc.canvas }]}>
-        <Text style={[styles.loading, { color: tc.inkSoft }]}>Generating action plan…</Text>
+      <View style={[styles.centered, { backgroundColor: tc.canvas, paddingHorizontal: r.horizontalPad }]}>
+        <Text style={[styles.loading, { color: tc.inkSoft }]}>Generating coordinated action plan…</Text>
       </View>
     );
   }
@@ -103,25 +103,30 @@ export function ActionPlanLayout({
       ]}
       keyboardShouldPersistTaps="handled"
     >
-      <GradientHeroCard style={r.isCompact ? styles.heroTight : undefined}>
-        <Text style={[styles.eyebrow, { fontSize: r.bodySize(10) }]}>AI ACTION PLAN</Text>
-        <Text style={[styles.title, { fontSize: r.titleSize(22) }]}>Coordinated actions</Text>
-        <Text style={[styles.sub, { fontSize: r.bodySize(14) }]} numberOfLines={4}>
-          {plan.summary}
-        </Text>
-        <View style={styles.metaRow}>
-          <View style={styles.metaItem}>
-            <Ionicons name="analytics-outline" size={14} color={tc.sageDeep} />
-            <Text style={[styles.meta, { fontSize: r.bodySize(12) }]}>Gemini agents</Text>
+      <Card style={{ marginBottom: 12, padding: 16 }}>
+        <Text style={[styles.eyebrow, { color: tc.primaryDark }]}>{plan.agentName || "ActionPlanAgent"}</Text>
+        <Text style={[styles.title, { color: tc.ink, fontSize: r.bodySize(18) }]}>{plan.summary}</Text>
+        {plan.contextual ? (
+          <Text style={[styles.sub, { color: tc.inkSoft, fontSize: r.bodySize(12), marginTop: 8 }]}>
+            Queue #{plan.contextual.focusRank} · {plan.contextual.focusPriority} · {totalEta}
+          </Text>
+        ) : (
+          <Text style={[styles.sub, { color: tc.inkMuted, marginTop: 8 }]}>{totalEta}</Text>
+        )}
+        {plan.contextual?.resourceAssignments?.length ? (
+          <View style={{ marginTop: 12 }}>
+            <Text style={[styles.pri, { color: tc.tealDeep }]}>ASSIGNED RESOURCES</Text>
+            {plan.contextual.resourceAssignments.map((a) => (
+              <Text key={a.resourceId} style={[styles.rationale, { color: tc.ink, marginTop: 8 }]}>
+                {a.resourceName} ×{a.quantity} — {a.rationale}
+              </Text>
+            ))}
           </View>
-          <View style={styles.metaItem}>
-            <Ionicons name="time-outline" size={14} color={tc.inkMuted} />
-            <Text style={[styles.meta, { fontSize: r.bodySize(12) }]}>{totalEta}</Text>
-          </View>
-        </View>
-      </GradientHeroCard>
+        ) : null}
+      </Card>
 
-      {tasks.map((a, i) => {
+      {tasks.length > 0
+        ? tasks.map((a, i) => {
         const tint = PRI_COLORS[a.priority] ?? tc.tealDeep;
         const iconName = iconForHint(a.iconHint);
         return (
@@ -144,6 +149,11 @@ export function ActionPlanLayout({
                   {a.owner} · {a.etaLabel}
                 </Text>
                 <Text style={[styles.rationale, { color: tc.inkMuted }]}>{a.rationale}</Text>
+                {a.assignedResourceId ? (
+                  <Text style={[styles.owner, { color: tc.tealDeep, marginTop: 4 }]}>
+                    Unit: {a.assignedResourceId}
+                  </Text>
+                ) : null}
               </View>
             ) : (
               <View style={styles.itemRow}>
@@ -164,7 +174,8 @@ export function ActionPlanLayout({
             )}
           </Card>
         );
-      })}
+        })
+        : null}
     </ScrollView>
   );
 }

@@ -5,8 +5,8 @@ const agentClient_1 = require("../agentClient");
 const INSTRUCTION = `Role: Operational action plan for one crisis.
 Input: { signal, crisisId }
 Output: { "actionPlan": { "crisisId", "phases": [{ "name", "actions", "owner", "etaMin" }], "resourceNeeds", "risks" } }`;
-async function runActionPlanAgent(signal, crisisId, degraded) {
-    const parsed = await (0, agentClient_1.callAntigravityAgent)('ActionPlanAgent', INSTRUCTION, { signal, crisisId }, degraded);
+async function runActionPlanAgent(signal, crisisId, degraded, context) {
+    const parsed = await (0, agentClient_1.callAntigravityAgent)('ActionPlanAgent', INSTRUCTION, { signal, crisisId, ...(context ? { context } : {}) }, degraded);
     const actionPlan = parsed.actionPlan;
     if (actionPlan?.crisisId && Array.isArray(actionPlan.phases)) {
         return {

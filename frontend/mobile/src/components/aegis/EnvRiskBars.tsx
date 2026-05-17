@@ -7,11 +7,13 @@ export function EnvRiskBar({
   value,
   color,
   sub,
+  recommendation,
 }: {
   label: string;
   value: number;
   color: string;
   sub: string;
+  recommendation?: string;
 }) {
   const tc = useThemeCiro();
   const pct = Math.min(100, Math.max(0, value));
@@ -40,4 +42,5 @@ const bar = StyleSheet.create({
   track: { height: 10, borderRadius: 999, overflow: "hidden" },
   fill: { height: "100%", borderRadius: 999 },
   sub: { marginTop: 8, fontSize: 12, fontWeight: "600", lineHeight: 17 },
+  rec: { marginTop: 6, fontSize: 12, fontWeight: "700", lineHeight: 17 },
 });

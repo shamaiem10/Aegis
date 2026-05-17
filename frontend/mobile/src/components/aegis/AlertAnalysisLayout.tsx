@@ -7,7 +7,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View, useColorScheme } from "r
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import type { AgentArtifactBundle } from "../../api/agentTypes";
+import type { AgentArtifactBundle, AgentPriority } from "../../api/agentTypes";
+import { useRootStackNavigation } from "../../navigation/useRootStackNavigation";
 import type { AlertAnalysisViewModel } from "../../utils/alertAnalysisViewModel";
 import type { IonName } from "../../utils/alertIcons";
 import { alertIconForSignal } from "../../utils/alertIcons";
@@ -67,6 +68,18 @@ function SourceRow({
       </View>
     </View>
   );
+}
+
+function priorityTone(p: AgentPriority | undefined): "alert" | "amber" | "mint" | "sky" {
+  if (p === "CRITICAL" || p === "HIGH") return "alert";
+  if (p === "MEDIUM") return "amber";
+  return "mint";
+}
+
+function priorityAccent(tc: ReturnType<typeof useThemeCiro>, p: AgentPriority | undefined): string {
+  if (p === "CRITICAL" || p === "HIGH") return tc.alert;
+  if (p === "MEDIUM") return tc.amber;
+  return tc.tealDeep;
 }
 
 function MetricTile({
@@ -131,13 +144,16 @@ export function AlertAnalysisLayout({
   const tc = useThemeCiro();
   const r = useResponsiveLayout();
   const insets = useSafeAreaInsets();
+  const rootNav = useRootStackNavigation();
   const schemeDark = useColorScheme() === "dark";
 
-  const priorityTone = vm.priority === "HIGH" ? "alert" : vm.priority === "MED" ? "amber" : "mint";
-  const accentColor =
-    vm.priority === "HIGH" ? tc.alert : vm.priority === "MED" ? tc.amber : tc.tealDeep;
+  const agentPri = agentArtifacts?.triage?.priority ?? agentArtifacts?.contextual?.focusPriority;
+  const heroPriorityLabel = agentPri ?? vm.priority;
+  const heroPillTone = agentPri ? priorityTone(agentPri) : vm.priority === "HIGH" ? "alert" : vm.priority === "MED" ? "amber" : "mint";
+  const accentColor = agentPri ? priorityAccent(tc, agentPri) : vm.priority === "HIGH" ? tc.alert : vm.priority === "MED" ? tc.amber : tc.tealDeep;
   const heroIcon = alertIconForSignal(signal.kind, signal.text);
   const metricFull = r.isCompact || r.width < 380;
+  const ctx = agentArtifacts?.contextual;
 
   return (
     <View style={[root.wrap, { backgroundColor: tc.canvas }]}>
@@ -165,7 +181,8 @@ export function AlertAnalysisLayout({
           ]}
         >
           <View style={root.heroBadgeRow}>
-            <Pill tone={priorityTone}>{vm.priority}</Pill>
+            <Pill tone={heroPillTone}>{heroPriorityLabel}</Pill>
+            {ctx?.focusRank ? <Pill tone="sky">Queue #{ctx.focusRank}</Pill> : null}
             <Pill tone="ink">{vm.categoryLabel}</Pill>
             <Pill tone="mint">{vm.kindLabel}</Pill>
           </View>
@@ -238,14 +255,6 @@ export function AlertAnalysisLayout({
           </View>
         ) : null}
 
-        {agentsLoading ? (
-          <Section title="Agent analysis" icon="sparkles-outline" tc={tc}>
-            <Text style={[root.body, { color: tc.inkSoft, fontSize: r.bodySize(14) }]}>
-              AI agents analyzing alert (triage + dossier — ~15–30s, action plan on demand)…
-            </Text>
-          </Section>
-        ) : null}
-
         {agentsError ? (
           <View style={[root.warn, { backgroundColor: schemeDark ? "#3b1720" : "#fef2f2", borderColor: tc.alert }]}>
             <Ionicons name="cloud-offline-outline" size={20} color={tc.alertDeep} />
@@ -261,39 +270,112 @@ export function AlertAnalysisLayout({
           </View>
         ) : null}
 
-        {agentArtifacts?.triage ? (
-          <Section title="AI triage" icon="sparkles-outline" tc={tc}>
-            <Pill tone={agentArtifacts.triage.priority === "CRITICAL" ? "alert" : "mint"}>
-              {agentArtifacts.triage.disposition.replace(/_/g, " ")}
-            </Pill>
-            <Text style={[root.impactLead, { color: tc.ink, fontSize: r.bodySize(15), marginTop: 10 }]}>
-              {agentArtifacts.triage.rationale}
-            </Text>
-            {agentArtifacts.triage.recommendedNextSteps.map((step) => (
-              <View
-                key={step}
-                style={[root.actionCard, { backgroundColor: tc.muted, borderColor: tc.borderSoft }]}
-              >
-                <Text style={[root.actionTxt, { color: tc.ink, fontSize: r.bodySize(14) }]}>{step}</Text>
-              </View>
-            ))}
-            {agentArtifacts.triage.assignTo.length > 0 ? (
-              <Text style={[root.origin, { color: tc.inkMuted, marginTop: 8 }]}>
-                Assign: {agentArtifacts.triage.assignTo.join(" · ")}
+        {!agentsError && (agentArtifacts || agentsLoading) ? (
+          <Section title="Triage & analysis" icon="pulse-outline" tc={tc}>
+            {agentsLoading ? (
+              <Text style={[root.body, { color: tc.inkSoft, fontSize: r.bodySize(14) }]}>
+                Running AlertTriageAgent, CrisisAnalysisAgent, and queue ranking…
               </Text>
+            ) : null}
+            {agentArtifacts?.triage ? (
+              <View style={{ marginBottom: 14 }}>
+                <Text style={[root.agentLbl, { color: tc.inkMuted }]}>AlertTriageAgent</Text>
+                {agentArtifacts.triage.degradedMode ? (
+                  <Pill tone="amber">Rule-based fallback</Pill>
+                ) : null}
+                <Pill tone={agentArtifacts.triage.priority === "CRITICAL" ? "alert" : "mint"}>
+                  {agentArtifacts.triage.disposition.replace(/_/g, " ")}
+                </Pill>
+                <Text style={[root.impactLead, { color: tc.ink, fontSize: r.bodySize(15), marginTop: 10 }]}>
+                  {agentArtifacts.triage.rationale}
+                </Text>
+                {agentArtifacts.triage.recommendedNextSteps.map((step) => (
+                  <View
+                    key={step}
+                    style={[root.actionCard, { backgroundColor: tc.muted, borderColor: tc.borderSoft }]}
+                  >
+                    <Text style={[root.actionTxt, { color: tc.ink, fontSize: r.bodySize(14) }]}>{step}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            {agentArtifacts?.analysis ? (
+              <View style={{ marginBottom: 14 }}>
+                <Text style={[root.agentLbl, { color: tc.inkMuted }]}>CrisisAnalysisAgent</Text>
+                <Text style={[root.body, { color: tc.ink, fontSize: r.bodySize(15) }]}>
+                  {agentArtifacts.analysis.executiveSummary}
+                </Text>
+                {agentArtifacts.analysis.keyRisks.map((risk) => (
+                  <Text key={risk} style={[root.origin, { color: tc.alertDeep, marginTop: 6 }]}>
+                    · {risk}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+
+            {ctx && ctx.globalPrioritization.length > 0 ? (
+              <View>
+                <Text style={[root.agentLbl, { color: tc.inkMuted }]}>ContextualAlertOrchestrator</Text>
+                <Text style={[root.body, { color: tc.inkSoft, fontSize: r.bodySize(13), marginBottom: 10 }]}>
+                  {ctx.competingAlertsNote}
+                </Text>
+                {ctx.globalPrioritization.slice(0, 8).map((row) => {
+                  const isFocus = row.signalId === vm.signalId;
+                  return (
+                    <View
+                      key={row.signalId}
+                      style={[
+                        root.queueRow,
+                        {
+                          borderColor: isFocus ? tc.tealDeep : tc.borderSoft,
+                          backgroundColor: isFocus ? tc.tealSoft : tc.muted,
+                        },
+                      ]}
+                    >
+                      <Text style={[root.queueRank, { color: tc.inkMuted }]}>#{row.rank}</Text>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={[root.queueHeadline, { color: tc.ink }]} numberOfLines={2}>
+                          {row.headline}
+                        </Text>
+                        <Text style={[root.origin, { color: tc.inkMuted }]} numberOfLines={2}>
+                          Score {row.score} · {row.rationale}
+                        </Text>
+                      </View>
+                      <Pill tone={priorityTone(row.priority)}>{row.priority}</Pill>
+                    </View>
+                  );
+                })}
+              </View>
             ) : null}
           </Section>
         ) : null}
 
-        {agentArtifacts?.analysis ? (
-          <Section title="Dossier analysis" icon="layers-outline" tc={tc}>
-            <Text style={[root.body, { color: tc.ink, fontSize: r.bodySize(15) }]}>
-              {agentArtifacts.analysis.executiveSummary}
-            </Text>
-            {agentArtifacts.analysis.keyRisks.map((risk) => (
-              <Text key={risk} style={[root.origin, { color: tc.alertDeep, marginTop: 6 }]}>
-                · {risk}
-              </Text>
+        {!agentsError && (ctx?.recommendations?.length || ctx?.resourceAssignments?.length) ? (
+          <Section title="Planning & resources" icon="construct-outline" tc={tc}>
+            {ctx?.resourceAssignments?.length ? (
+              <View style={{ marginBottom: 12 }}>
+                <Text style={[root.agentLbl, { color: tc.inkMuted }]}>ResourceAllocator</Text>
+                {ctx.resourceAssignments.map((a) => (
+                  <View
+                    key={`${a.resourceId}-${a.assignedToSignalId}`}
+                    style={[root.actionCard, { backgroundColor: tc.muted, borderColor: tc.borderSoft }]}
+                  >
+                    <Text style={[root.actionTxt, { color: tc.ink, fontWeight: "800" }]}>
+                      {a.resourceName} ×{a.quantity}
+                    </Text>
+                    <Text style={[root.origin, { color: tc.inkMuted, marginTop: 4 }]}>{a.rationale}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            {ctx?.recommendations?.map((rec) => (
+              <View
+                key={rec}
+                style={[root.actionCard, { backgroundColor: tc.muted, borderColor: tc.borderSoft }]}
+              >
+                <Text style={[root.actionTxt, { color: tc.ink, fontSize: r.bodySize(14) }]}>{rec}</Text>
+              </View>
             ))}
           </Section>
         ) : null}
@@ -339,6 +421,22 @@ export function AlertAnalysisLayout({
             {vm.dataOrigin}
           </Text>
         </Section>
+
+        <Pressable
+          onPress={() => rootNav.navigate("SimulationLive", { signalId: vm.signalId })}
+          style={({ pressed }) => [
+            root.cta,
+            {
+              backgroundColor: schemeDark ? "#422006" : "#fff7ed",
+              borderColor: tc.amber,
+              opacity: pressed ? 0.9 : 1,
+              marginBottom: 10,
+            },
+          ]}
+        >
+          <Text style={[root.ctaTxt, { color: tc.amberDeep }]}>Simulate resources for this alert</Text>
+          <Ionicons name="options-outline" size={20} color={tc.amberDeep} />
+        </Pressable>
 
         {onOpenActionPlan && !agentsError ? (
           <Pressable
@@ -481,6 +579,24 @@ const root = StyleSheet.create({
   },
   actionNumTxt: { fontSize: 14, fontWeight: "900" },
   actionTxt: { flex: 1, minWidth: 0, lineHeight: 22, fontWeight: "600" },
+  queueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  queueRank: { fontSize: 12, fontWeight: "900", width: 28 },
+  queueHeadline: { fontSize: 13, fontWeight: "800", lineHeight: 18 },
+  agentLbl: {
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    marginBottom: 8,
+  },
   origin: { marginTop: 12, fontSize: 11, fontWeight: "600", lineHeight: 16 },
   cta: {
     flexDirection: "row",

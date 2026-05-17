@@ -1,3 +1,5 @@
+import { buildFalseAlarmScreenResult, ruleBasedFalseAlarmChecks } from './falseAlarmAgent';
+import { ruleBasedStakeholderDrafts } from './stakeholderAlertAgent';
 import type {
   ActionPlanResult,
   ActionPlanPhase,
@@ -218,12 +220,37 @@ export function runRuleBasedFallback(
     return { allocations: [], shortages: [], tradeoffs: [], note: 'rule-based fallback active' };
   }
   if (agentName === 'FalseAlarmAgent') {
+    const input = (payload.input ?? {}) as { signals?: FlatSignalInput[]; fusedSignals?: FlatSignalInput[] };
+    const signals = (input.signals ?? input.fusedSignals ?? []) as FlatSignalInput[];
+    if (signals.length) {
+      const result = buildFalseAlarmScreenResult(ruleBasedFalseAlarmChecks(signals), ['FalseAlarmAgent']);
+      return {
+        checks: result.checks,
+        falseAlarmChecks: result.checks.map((c) => ({
+          crisisId: c.crisisId,
+          signalId: c.signalId,
+          recommendedAction: c.recommendedAction,
+          reason: c.reason,
+        })),
+        note: 'rule-based fallback active',
+      };
+    }
     return { falseAlarmChecks: [], note: 'rule-based fallback active' };
   }
   if (agentName === 'CompoundRiskAgent') {
     return { compoundRisks: [], note: 'rule-based fallback active' };
   }
   if (agentName === 'StakeholderAlertAgent') {
+    const input = (payload.input ?? {}) as {
+      focusSignal?: FlatSignalInput;
+      signal?: FlatSignalInput;
+    };
+    const signal = (input.focusSignal ?? input.signal) as FlatSignalInput | undefined;
+    if (signal?.id) {
+      const crisisId = signal.id.startsWith('pk-') ? signal.id : `pk-${signal.id}`;
+      const drafts = ruleBasedStakeholderDrafts(signal, crisisId);
+      return { alertDrafts: drafts, note: 'rule-based fallback active' };
+    }
     return { alertDrafts: [], note: 'rule-based fallback active' };
   }
 

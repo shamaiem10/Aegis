@@ -4,15 +4,24 @@ import {
   QueryDocumentSnapshot,
   collection,
   doc,
+  getDoc,
   getFirestore,
   limit,
   onSnapshot,
   orderBy,
   query,
+  setDoc,
   where,
 } from "firebase/firestore";
 
-import type { CrisisDossierApi, SignalApi } from "../../src/api/types";
+import type { CrisisDossierApi, ResourceUnitApi, SignalApi } from "../../src/api/types";
+import type {
+  AgentArtifactBundle,
+  AiSeverityIndexResult,
+  FalseAlarmScreenResult,
+} from "../../src/api/agentTypes";
+import { fetchAiSeverityIndex } from "../../src/api/agents";
+import type { PakistanEnvCityKey, PakistanLiveEnvSnapshot } from "../../src/api/pakistanEnvLive";
 import type { Resource } from "../../src/components/aegis/data";
 import {
   fetchResourceInventory,
@@ -20,7 +29,6 @@ import {
   listSignals,
   mockLiveCrisisBundleEnabled,
   pkMockAlertsEnabled,
-  pkResourcesRemoteBase,
 } from "../../src/api/client";
 import type { IonName } from "../../src/utils/alertIcons";
 import { filterSignalsPakistan } from "../../src/config/pakistan";
@@ -48,6 +56,7 @@ export type AntigravityTraceRow = {
   confidence: number;
   timestamp: string;
   crisisId?: string;
+  latencyMs?: number;
 };
 
 export type AntigravityPulseDoc = Record<string, unknown>;
@@ -164,6 +173,14 @@ function signalFromDoc(snap: QueryDocumentSnapshot): SignalApi | null {
   };
 }
 
+function confidenceFromTraceOutput(output: Record<string, unknown>): number {
+  const triage = output.triage as { confidencePct?: number } | undefined;
+  if (typeof triage?.confidencePct === "number") return triage.confidencePct / 100;
+  if (typeof output.confidence === "number") return output.confidence;
+  if (typeof output.confidencePct === "number") return output.confidencePct / 100;
+  return 0;
+}
+
 function traceFromDoc(snap: QueryDocumentSnapshot): AntigravityTraceRow | null {
   const r = snap.data() as Record<string, unknown>;
   if (!r) return null;
@@ -174,15 +191,26 @@ function traceFromDoc(snap: QueryDocumentSnapshot): AntigravityTraceRow | null {
       : ts && typeof ts.toDate === "function"
         ? ts.toDate()!.toISOString()
         : new Date().toISOString();
+  const inputs =
+    (r.input as Record<string, unknown>) ??
+    (r.inputs as Record<string, unknown>) ??
+    {};
+  const outputs =
+    (r.output as Record<string, unknown>) ??
+    (r.outputs as Record<string, unknown>) ??
+    {};
+  const agentId = String(r.agentName ?? r.agentId ?? r.agent_id ?? "unknown");
+  const latencyMs = Number(r.latencyMs ?? 0);
   return {
     id: snap.id,
-    agentId: String(r.agentId ?? r.agent_id ?? "unknown"),
-    action: String(r.action ?? r.phase ?? ""),
-    inputs: (r.inputs as Record<string, unknown>) ?? {},
-    outputs: (r.outputs as Record<string, unknown>) ?? {},
-    confidence: Number(r.confidence ?? 0),
+    agentId,
+    action: String(r.action ?? r.phase ?? agentId.replace(/Agent$/, "") ?? "completed"),
+    inputs,
+    outputs,
+    confidence: Number(r.confidence ?? confidenceFromTraceOutput(outputs) ?? 0),
     timestamp,
     crisisId: typeof r.crisisId === "string" ? r.crisisId : undefined,
+    latencyMs: Number.isFinite(latencyMs) && latencyMs > 0 ? latencyMs : undefined,
   };
 }
 
@@ -411,77 +439,200 @@ function mapInventoryItems(items: unknown): Resource[] {
   });
 }
 
+function mapInventoryUnits(raw: unknown): ResourceUnitApi[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((row) => {
+    const u = row as Record<string, unknown>;
+    return {
+      resource_id: String(u.resource_id ?? ""),
+      name: String(u.name ?? "Unit"),
+      kind: u.kind as ResourceUnitApi["kind"],
+      agency: u.agency != null ? String(u.agency) : undefined,
+      quantity_available: Number(u.quantity_available ?? 0),
+      quantity_total: u.quantity_total != null ? Number(u.quantity_total) : undefined,
+      lat: u.lat != null ? Number(u.lat) : undefined,
+      lon: u.lon != null ? Number(u.lon) : undefined,
+      tags: Array.isArray(u.tags) ? u.tags.map(String) : undefined,
+      source: u.source as ResourceUnitApi["source"],
+      status: u.status as ResourceUnitApi["status"],
+    };
+  });
+}
+
 export function useResourceInventory(): {
   data: Resource[];
+  units: ResourceUnitApi[];
+  region: string;
+  updatedAt: string | null;
+  sources: { curated: number; openstreetmap: number } | null;
   loading: boolean;
   usingFallback: boolean;
+  error: string | null;
+  refresh: () => Promise<void>;
 } {
   const [data, setData] = useState<Resource[]>([]);
+  const [units, setUnits] = useState<ResourceUnitApi[]>([]);
+  const [region, setRegion] = useState("islamabad_rawalpindi");
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [sources, setSources] = useState<{ curated: number; openstreetmap: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [usingFallback, setUsingFallback] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
+
+  const refresh = async () => {
+    setLoading(true);
+    setError(null);
+    setReloadToken((n) => n + 1);
+  };
 
   useEffect(() => {
     let unsubscribed = false;
-    let unsubscribe: (() => void) | undefined;
 
-    const applyItems = (items: Resource[], fallback: boolean) => {
+    const applyInventory = (
+      items: Resource[],
+      nextUnits: ResourceUnitApi[],
+      invRegion: string,
+      invUpdated: string | null,
+      invSources: { curated: number; openstreetmap: number } | null,
+      fallback: boolean,
+    ) => {
       if (unsubscribed) return;
-      setData(items);
+      if (items.length) setData(items);
+      if (nextUnits.length) setUnits(nextUnits);
+      setRegion(invRegion);
+      setUpdatedAt(invUpdated);
+      setSources(invSources);
       setUsingFallback(fallback);
       setLoading(false);
     };
 
-    (async () => {
+    const load = async () => {
+      setLoading(true);
+      let gotFromDeployedApi = false;
       try {
-        const inv = await fetchResourceInventory(false);
-        if (!unsubscribed && inv.items?.length) {
-          applyItems(mapInventoryItems(inv.items), false);
+        const inv = await fetchResourceInventory(reloadToken > 0);
+        if (unsubscribed) return;
+        const items = mapInventoryItems(inv.items);
+        const nextUnits = mapInventoryUnits(inv.units);
+        gotFromDeployedApi = items.length > 0 || nextUnits.length > 0;
+        if (gotFromDeployedApi) {
+          applyInventory(
+            items,
+            nextUnits,
+            inv.region ?? "islamabad_rawalpindi",
+            inv.updatedAt ?? null,
+            inv.sources ?? null,
+            false,
+          );
         }
+        setError(null);
       } catch (e) {
-        logFirestoreHook("useResourceInventory:api", e);
+        logFirestoreHook("useResourceInventory:deployed-api", e);
+        if (!unsubscribed) {
+          setError(e instanceof Error ? e.message : String(e));
+        }
       }
-    })();
 
-    const app = getFirebaseApp();
-    if (!app) {
-      if (!pkResourcesRemoteBase()) {
-        applyItems([], true);
+      if (unsubscribed || gotFromDeployedApi) {
+        if (!unsubscribed && !gotFromDeployedApi) setLoading(false);
+        return;
       }
-      return () => {
-        unsubscribed = true;
-      };
-    }
 
-    const db = getFirestore(app);
-    const ref = doc(db, "resources", "inventory");
+      const app = getFirebaseApp();
+      if (!app) {
+        if (!unsubscribed) setLoading(false);
+        return;
+      }
+      try {
+        const db = getFirestore(app);
+        const snap = await getDoc(doc(db, "resources", "inventory"));
+        if (unsubscribed || !snap.exists()) return;
+        const row = snap.data() as {
+          items?: unknown;
+          units?: unknown;
+          region?: string;
+          updatedAt?: string;
+          sources?: { curated: number; openstreetmap: number };
+        };
+        const items = mapInventoryItems(row?.items);
+        const nextUnits = mapInventoryUnits(row?.units);
+        if (items.length || nextUnits.length) {
+          applyInventory(
+            items,
+            nextUnits,
+            row?.region ?? "islamabad_rawalpindi",
+            row?.updatedAt ?? null,
+            row?.sources ?? null,
+            true,
+          );
+        }
+      } catch (err) {
+        logFirestoreHook("useResourceInventory:firestore-fallback", err);
+      } finally {
+        if (!unsubscribed && !gotFromDeployedApi) setLoading(false);
+      }
+    };
 
-    try {
-      unsubscribe = onSnapshot(
-        ref,
-        (snap) => {
-          if (unsubscribed) return;
-          const row = snap.exists() ? (snap.data() as { items?: unknown } | undefined) : undefined;
-          const items = mapInventoryItems(row?.items);
-          if (items.length) {
-            applyItems(items, false);
-          }
-        },
-        (err) => {
-          logFirestoreHook("useResourceInventory", err);
-        },
-      );
-    } catch (err) {
-      logFirestoreHook("useResourceInventory", err);
-      if (!data.length) applyItems([], true);
-    }
+    void load();
 
     return () => {
       unsubscribed = true;
-      unsubscribe?.();
     };
-  }, []);
+  }, [reloadToken]);
 
-  return { data, loading, usingFallback };
+  return { data, units, region, updatedAt, sources, loading, usingFallback, error, refresh };
+}
+
+export function useAiSeverityIndex(
+  envIndex: PakistanLiveEnvSnapshot,
+  selectedCity: PakistanEnvCityKey,
+  envLoading: boolean,
+): {
+  data: AiSeverityIndexResult | null;
+  loading: boolean;
+  error: string | null;
+  refresh: () => void;
+} {
+  const [data, setData] = useState<AiSeverityIndexResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [token, setToken] = useState(0);
+
+  useEffect(() => {
+    if (envLoading) return;
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await fetchAiSeverityIndex(envIndex, selectedCity);
+        if (!cancelled) {
+          setData(result);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : String(e));
+          setData(null);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [envIndex, selectedCity, envLoading, token]);
+
+  return {
+    data,
+    loading,
+    error,
+    refresh: () => setToken((n) => n + 1),
+  };
 }
 
 export function useAPIHealth(): {
@@ -615,6 +766,130 @@ export function useAntigravityTraces(): {
   return { data, loading, usingFallback };
 }
 
+export type AgentArtifactRow = AgentArtifactBundle & { id: string };
+
+export function useFalseAlarmQueue(): {
+  data: FalseAlarmScreenResult | null;
+  loading: boolean;
+  usingFallback: boolean;
+} {
+  const [data, setData] = useState<FalseAlarmScreenResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [usingFallback, setUsingFallback] = useState(true);
+
+  useEffect(() => {
+    const app = getFirebaseApp();
+    if (!app) {
+      setData(null);
+      setUsingFallback(true);
+      setLoading(false);
+      return;
+    }
+
+    const db = getFirestore(app);
+    const ref = doc(db, "falseAlarmQueue", "latest");
+
+    let unsubscribed = false;
+    let unsubscribe: (() => void) | undefined;
+
+    try {
+      unsubscribe = onSnapshot(
+        ref,
+        (snap) => {
+          if (unsubscribed) return;
+          setData(snap.exists() ? (snap.data() as FalseAlarmScreenResult) : null);
+          setUsingFallback(false);
+          setLoading(false);
+        },
+        (err) => {
+          logFirestoreHook("useFalseAlarmQueue", err);
+          if (!unsubscribed) {
+            setData(null);
+            setUsingFallback(true);
+            setLoading(false);
+          }
+        },
+      );
+    } catch (err) {
+      logFirestoreHook("useFalseAlarmQueue", err);
+      setData(null);
+      setUsingFallback(true);
+      setLoading(false);
+    }
+
+    return () => {
+      unsubscribed = true;
+      unsubscribe?.();
+    };
+  }, []);
+
+  return { data, loading, usingFallback };
+}
+
+export function useRecentAgentArtifacts(limitCount = 12): {
+  data: AgentArtifactRow[];
+  loading: boolean;
+  usingFallback: boolean;
+} {
+  const [data, setData] = useState<AgentArtifactRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [usingFallback, setUsingFallback] = useState(true);
+
+  useEffect(() => {
+    const app = getFirebaseApp();
+    if (!app) {
+      setData([]);
+      setUsingFallback(true);
+      setLoading(false);
+      return;
+    }
+
+    const db = getFirestore(app);
+    const q = query(collection(db, "agentArtifacts"), orderBy("updatedAt", "desc"), limit(limitCount));
+
+    let unsubscribed = false;
+    let unsubscribe: (() => void) | undefined;
+
+    try {
+      unsubscribe = onSnapshot(
+        q,
+        (snap) => {
+          if (unsubscribed) return;
+          const rows: AgentArtifactRow[] = [];
+          snap.forEach((docSnap) => {
+            const raw = docSnap.data() as AgentArtifactBundle;
+            if (!raw?.updatedAt && !raw?.triage && !raw?.contextual) return;
+            rows.push({ ...raw, id: docSnap.id });
+          });
+          setData(rows);
+          setUsingFallback(false);
+          setLoading(false);
+        },
+        (err) => {
+          logFirestoreHook("useRecentAgentArtifacts", err);
+          if (!unsubscribed) {
+            setData([]);
+            setUsingFallback(true);
+            setLoading(false);
+          }
+        },
+      );
+    } catch (err) {
+      logFirestoreHook("useRecentAgentArtifacts", err);
+      setData([]);
+      setUsingFallback(true);
+      setLoading(false);
+    }
+
+    return () => {
+      unsubscribed = true;
+      unsubscribe?.();
+    };
+  }, [limitCount]);
+
+  return { data, loading, usingFallback };
+}
+
 export function useAntigravityPulse(): {
   data: AntigravityPulseDoc;
   loading: boolean;
@@ -744,4 +1019,64 @@ export function usePendingAlerts(): {
   }, []);
 
   return { data, loading, usingFallback };
+}
+
+export type StakeholderDraftWrite = {
+  crisisId: string;
+  signalId?: string;
+  audienceType: string;
+  title: string;
+  body: string;
+  urduText?: string;
+  stagingOrderIndex: number;
+  severity?: string;
+};
+
+/** Write pending stakeholder drafts from the device when cloud-run is unreachable on LAN. */
+export async function writeStakeholderDraftsToFirestore(
+  drafts: StakeholderDraftWrite[],
+): Promise<string[]> {
+  const app = getFirebaseApp();
+  if (!app) {
+    throw new Error("Firebase not configured — cannot save drafts from phone.");
+  }
+  const db = getFirestore(app);
+  const now = new Date().toISOString();
+  const ids: string[] = [];
+  for (const d of drafts) {
+    const docId = `${d.crisisId}-${d.audienceType}`;
+    await setDoc(
+      doc(db, "alerts", docId),
+      {
+        crisisId: d.crisisId,
+        signalId: d.signalId,
+        audienceType: d.audienceType,
+        title: d.title,
+        body: d.body,
+        messageText: d.body,
+        englishText: d.body,
+        urduText: d.urduText,
+        severity: d.severity ?? "Medium",
+        stagingOrderIndex: d.stagingOrderIndex,
+        status: "pending_approval",
+        generatedAt: now,
+        issuedAt: now,
+        agentName: "StakeholderAlertAgent",
+      },
+      { merge: true },
+    );
+    ids.push(docId);
+  }
+  return ids;
+}
+
+export async function rejectStakeholderDraftInFirestore(alertId: string): Promise<void> {
+  const app = getFirebaseApp();
+  if (!app) throw new Error("Firebase not configured");
+  const db = getFirestore(app);
+  await setDoc(
+    doc(db, "alerts", alertId),
+    { status: "rejected", rejectedAt: new Date().toISOString() },
+    { merge: true },
+  );
 }

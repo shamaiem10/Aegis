@@ -336,8 +336,11 @@ Output: { "actionPlans": [{ "crisisId", "phases": [{ "name", "actions", "owner",
       await safeFirestoreWrite(`alerts/${docId}`, () =>
         db.collection('alerts').doc(docId).set({
           ...draft,
+          messageText: String(draft.body ?? draft.messageText ?? ''),
+          englishText: String(draft.body ?? draft.englishText ?? ''),
           status: 'pending_approval',
           generatedAt: new Date().toISOString(),
+          issuedAt: new Date().toISOString(),
         }),
       );
     }

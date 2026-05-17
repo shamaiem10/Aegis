@@ -108,6 +108,36 @@ async function pingTwitter(): Promise<{ ok: boolean; err?: string; ms: number }>
   }
 }
 
+async function pingGroq(): Promise<{ ok: boolean; err?: string; ms: number }> {
+  const t0 = Date.now();
+  const key = process.env.GROQ_API_KEY?.trim();
+  try {
+    if (!key) return { ok: false, err: "no_GROQ_API_KEY", ms: Date.now() - t0 };
+    const model = process.env.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile";
+    const res = await fetchWithTimeout("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: "Reply JSON only: {\"ping\":true}" }],
+        max_tokens: 32,
+        response_format: { type: "json_object" },
+      }),
+    });
+    const ms = Date.now() - t0;
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      return { ok: false, err: `status ${res.status} ${txt.slice(0, 80)}`, ms };
+    }
+    return { ok: true, ms };
+  } catch (e) {
+    return { ok: false, err: e instanceof Error ? e.message : String(e), ms: Date.now() - t0 };
+  }
+}
+
 async function pingOpenRouter(): Promise<{ ok: boolean; err?: string; ms: number }> {
   const t0 = Date.now();
   const key = process.env.OPENROUTER_API_KEY?.trim();
@@ -202,6 +232,7 @@ export async function checkAllAPIHealth(): Promise<Record<string, ApiHealthEntry
       iq,
       here,
       tw,
+      groq,
       ag,
       orRouter,
     ] = await Promise.all([
@@ -210,6 +241,7 @@ export async function checkAllAPIHealth(): Promise<Record<string, ApiHealthEntry
       pingIqair(),
       pingHere(),
       pingTwitter(),
+      pingGroq(),
       pingAntigravity(),
       pingOpenRouter(),
     ]);
@@ -219,6 +251,7 @@ export async function checkAllAPIHealth(): Promise<Record<string, ApiHealthEntry
     results.iqair = await recordHealth("iqair", "IQAir", iq);
     results["here-maps"] = await recordHealth("here-maps", "HERE Maps", here);
     results.twitter = await recordHealth("twitter", "Twitter / X", tw);
+    results.groq = await recordHealth("groq", "Groq LLM (agents)", groq);
     results.antigravity = await recordHealth("antigravity", "Vertex AI (Gemini)", ag);
     results.openrouter = await recordHealth("openrouter", "OpenRouter LLM", orRouter);
 

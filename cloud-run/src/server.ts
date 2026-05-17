@@ -17,8 +17,18 @@ import { getHereTrafficIncidents } from "./apis/traffic";
 import { dispatchAlert } from "./alerts/dispatch";
 import agentsRouter from "./routes/agents";
 import resourcesRouter from "./routes/resources";
+import crisesRouter from "./routes/crises";
+import downloadRouter from "./routes/download";
+import { patchCrisisStatusWithRelease } from "./services/crisisResourceAllocation";
+import { materializePkMockCrisisIfMissing } from "./services/crisisMaterialize";
 import { resolveFirebaseProjectId } from "./firebase-admin";
-import { hasGeminiCredentials, hasOpenRouterCredentials, resolveProviderOrder } from "./antigravity/llmGenerate";
+import {
+  groqModelName,
+  hasGeminiCredentials,
+  hasGroqCredentials,
+  hasOpenRouterCredentials,
+  resolveProviderOrder,
+} from "./antigravity/llmGenerate";
 
 import "./firebase-admin";
 
@@ -36,6 +46,9 @@ app.get("/health", (_req, res) => {
     gcloudProjectEnv: process.env.GCLOUD_PROJECT ?? null,
     llm: {
       providers: resolveProviderOrder(),
+      primary: process.env.LLM_PRIMARY?.trim() || (hasGroqCredentials() ? "groq" : "gemini"),
+      groq: hasGroqCredentials(),
+      groqModel: hasGroqCredentials() ? groqModelName() : null,
       gemini: hasGeminiCredentials(),
       openrouter: hasOpenRouterCredentials(),
     },
@@ -137,9 +150,15 @@ app.get("/api/v1/crises", async (_req, res, next) => {
 
 app.get("/api/v1/crises/:id", async (req, res, next) => {
   try {
-    const doc = await db.collection("crises").doc(req.params.id).get();
+    const crisisId = req.params.id;
+    let doc = await db.collection("crises").doc(crisisId).get();
     if (!doc.exists) {
-      res.status(404).json({ success: false, data: null, error: "not_found" });
+      const materialized = await materializePkMockCrisisIfMissing(crisisId);
+      if (!materialized) {
+        res.status(404).json({ success: false, data: null, error: "not_found" });
+        return;
+      }
+      res.json({ success: true, data: materialized.dossier, error: null });
       return;
     }
     const dossier = unwrapDossier(doc.data());
@@ -152,6 +171,29 @@ app.get("/api/v1/crises/:id", async (req, res, next) => {
     next(error);
   }
 });
+
+const CRISIS_STATUSES = new Set(["active", "monitoring", "resolved", "false_alarm"]);
+
+app.patch("/api/v1/crises/:id/status", async (req, res, next) => {
+  try {
+    const status = String((req.body as { status?: string })?.status ?? "").trim();
+    if (!CRISIS_STATUSES.has(status)) {
+      res.status(400).json({ success: false, data: null, error: "invalid_status" });
+      return;
+    }
+    const updated = await patchCrisisStatusWithRelease(req.params.id, status);
+    res.json({ success: true, data: updated, error: null });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg === "crisis_not_found" || msg === "unrecognized_crisis_shape") {
+      res.status(404).json({ success: false, data: null, error: msg });
+      return;
+    }
+    next(error);
+  }
+});
+
+app.use("/api/v1/crises", crisesRouter);
 
 app.get("/api/v1/pipeline/latest", async (_req, res, next) => {
   try {
@@ -262,6 +304,26 @@ app.post("/api/alerts/approve", async (req, res, next) => {
   }
 });
 
+app.post("/api/alerts/reject", async (req, res, next) => {
+  try {
+    const { alertId } = req.body;
+    if (!alertId) {
+      res.status(400).json({ success: false, data: null, error: "missing_alertId" });
+      return;
+    }
+    await db.collection("alerts").doc(alertId).set(
+      {
+        status: "rejected",
+        rejectedAt: new Date().toISOString(),
+      },
+      { merge: true },
+    );
+    res.json({ success: true, data: { alertId, status: "rejected" }, error: null });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/alerts/send", async (req, res, next) => {
   try {
     const { alertId } = req.body;
@@ -277,6 +339,7 @@ app.post("/api/alerts/send", async (req, res, next) => {
 
 app.use("/api/v1/agents", agentsRouter);
 app.use("/api/v1/resources", resourcesRouter);
+app.use("/download", downloadRouter);
 
 // Global Error Handler
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => { 

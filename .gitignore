@@ -1,13 +1,139 @@
-﻿# secrets
+﻿# =============================================================================
+# AEGIS monorepo — root .gitignore
+# =============================================================================
+
+# --- OS ---
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- IDE / editors ---
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-workspace
+*.sublime-project
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+
+# --- Secrets & credentials (never commit) ---
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.p12
+*.key
+*.jks
+*.keystore
+*.mobileprovision
 firebase-service-account.json
 **/firebase-service-account.json
+**/firebase-adminsdk-*.json
+**/*-firebase-adminsdk-*.json
+**/service-account*.json
+**/secrets/
+**/*.credentials.json
 
-# python env
-backend/.venv/
-**/.venv/
+# --- Python (backend/) ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
 
-# node
-node_modules
-.envcloud-run/secrets/*.json
+# --- Node ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-store/
 
+# --- TypeScript / JS build outputs ---
+*.tsbuildinfo
+**/dist/
+!**/dist/.gitkeep
+
+# cloud-run compiles in Docker; do not commit compiled dist/
+cloud-run/dist/
+
+# Service packages (keep source; ignore compiled dist)
+services/**/dist/
+!services/**/dist/.gitkeep
+
+# --- Expo / React Native (frontend/mobile) ---
+.expo/
+.expo-shared/
+expo-env.d.ts
+.metro-health-check*
+web-build/
+.expo-export-test/
+**/.kotlin/
+**/ios/
+**/android/
+*.orig.*
+
+# --- Mobile release binaries ---
+*.apk
+*.aab
+*.ipa
+**/releases/*.apk
+!**/releases/.gitkeep
+
+# --- Web (Vite / TanStack / Wrangler) ---
+dist-ssr/
+.output/
+.vinxi/
+.tanstack/
+.nitro/
+.wrangler/
+.dev.vars
+
+# --- Deploy / hosting ---
+.vercel/
+.netlify/
+.firebase/
+*.log
+
+# --- Caches & temp ---
+.cache/
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+
+# --- Test / coverage ---
+coverage/
+.nyc_output/
+*.lcov
+
+# --- EAS / Expo cloud ---
+.eas/
+
+# --- GCP local (optional JSON beside cloud-run) ---
 cloud-run/secrets/
+
+# --- Large export bundles ---
+frontend/mobile/expo-export-test/

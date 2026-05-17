@@ -24,10 +24,29 @@ export interface FusedSignalApi {
   fused_severity_hint: number;
 }
 
+export type ResourceKindApi =
+  | "medical"
+  | "security"
+  | "rescue_water"
+  | "shelter"
+  | "utility"
+  | "power_mobile"
+  | "drone"
+  | "fire"
+  | "ngo";
+
 export interface ResourceUnitApi {
   resource_id: string;
   name: string;
+  kind?: ResourceKindApi;
+  agency?: string;
   quantity_available: number;
+  quantity_total?: number;
+  lat?: number;
+  lon?: number;
+  tags?: string[];
+  source?: "curated" | "openstreetmap";
+  status?: "available" | "deployed" | "limited";
 }
 
 export interface ResourcePoolItemApi {

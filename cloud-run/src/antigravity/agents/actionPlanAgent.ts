@@ -9,11 +9,12 @@ export async function runActionPlanAgent(
   signal: FlatSignalInput,
   crisisId: string,
   degraded: string[],
+  context?: Record<string, unknown>,
 ): Promise<ActionPlanResult> {
   const parsed = await callAntigravityAgent(
     'ActionPlanAgent',
     INSTRUCTION,
-    { signal, crisisId },
+    { signal, crisisId, ...(context ? { context } : {}) },
     degraded,
   );
   const actionPlan = parsed.actionPlan as ActionPlanResult | undefined;

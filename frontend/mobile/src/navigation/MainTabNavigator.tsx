@@ -7,7 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { HomeScreen } from "../screens/HomeScreen";
 import { AlertsScreen } from "../screens/AlertsScreen";
-import { SimulationTabScreen } from "../screens/SimulationTabScreen";
+import { FalseAlarmTabScreen } from "../screens/FalseAlarmTabScreen";
 import { OrchestrationScreen } from "../screens/OrchestrationScreen";
 import { ReportsTabScreen } from "../screens/ReportsTabScreen";
 import type { MainTabParamList } from "./types";
@@ -19,7 +19,7 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 const TAB_ICONS: Record<keyof MainTabParamList, { on: keyof typeof Ionicons.glyphMap; off: keyof typeof Ionicons.glyphMap }> = {
   Dashboard: { on: "home", off: "home-outline" },
   Alerts: { on: "notifications", off: "notifications-outline" },
-  Simulation: { on: "star", off: "star-outline" },
+  FalseAlarm: { on: "shield-checkmark", off: "shield-checkmark-outline" },
   Agents: { on: "hardware-chip", off: "hardware-chip-outline" },
   Reports: { on: "document-text", off: "document-text-outline" },
 };
@@ -27,7 +27,7 @@ const TAB_ICONS: Record<keyof MainTabParamList, { on: keyof typeof Ionicons.glyp
 const TAB_LABELS: Record<keyof MainTabParamList, string> = {
   Dashboard: "Home",
   Alerts: "Alerts",
-  Simulation: "Simulation",
+  FalseAlarm: "False alarm",
   Agents: "Agents",
   Reports: "Reports",
 };
@@ -140,7 +140,7 @@ export function MainTabNavigator() {
     >
       <Tab.Screen name="Dashboard" component={HomeScreen} options={{ tabBarLabel: TAB_LABELS.Dashboard }} />
       <Tab.Screen name="Alerts" component={AlertsScreen} options={{ tabBarLabel: TAB_LABELS.Alerts }} />
-      <Tab.Screen name="Simulation" component={SimulationTabScreen} options={{ tabBarLabel: TAB_LABELS.Simulation }} />
+      <Tab.Screen name="FalseAlarm" component={FalseAlarmTabScreen} options={{ tabBarLabel: TAB_LABELS.FalseAlarm }} />
       <Tab.Screen name="Agents" component={OrchestrationScreen} options={{ tabBarLabel: TAB_LABELS.Agents }} />
       <Tab.Screen name="Reports" component={ReportsTabScreen} options={{ tabBarLabel: TAB_LABELS.Reports }} />
     </Tab.Navigator>

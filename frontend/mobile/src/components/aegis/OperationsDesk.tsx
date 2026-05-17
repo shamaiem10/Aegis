@@ -249,7 +249,7 @@ export function OperationsDesk() {
             >
               <Text style={[styles.linkTxt, { color: tc.tealDeep }]}>Open crisis</Text>
             </Pressable>
-            <Pressable onPress={() => rootNav.navigate("MainTabs", { screen: "Simulation" })} style={styles.linkChip}>
+            <Pressable onPress={() => rootNav.navigate("SimulationOverview")} style={styles.linkChip}>
               <Text style={[styles.linkTxt, { color: tc.tealDeep }]}>Simulation</Text>
             </Pressable>
             <Pressable onPress={() => rootNav.navigate("MainTabs", { screen: "Reports" })} style={styles.linkChip}>

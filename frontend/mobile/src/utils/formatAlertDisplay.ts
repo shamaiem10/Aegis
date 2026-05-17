@@ -133,3 +133,34 @@ export function formatAlertDisplay(signal: SignalApi): FormattedAlertDisplay {
     headline,
   };
 }
+
+export type FormattedAlertCompact = {
+  /** Crisis headline only */
+  title: string;
+  /** City · time · category */
+  meta: string;
+};
+
+/** Compact list row: short title + one meta line (alerts feed). */
+export function formatAlertDisplayCompact(signal: SignalApi): FormattedAlertCompact {
+  const { city, area } = parseAlertLocation(signal);
+  const headline = extractCrisisHeadline(signal.text, 88);
+  const category = formatCategoryLabel(signal);
+  const d = new Date(signal.recorded_at);
+  const timeShort = Number.isFinite(d.getTime())
+    ? d.toLocaleString("en-GB", {
+        timeZone: PAKISTAN_TIMEZONE,
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })
+    : signal.recorded_at;
+  const loc =
+    area && area !== "—" && area !== city ? `${city} · ${area}` : city;
+  return {
+    title: headline,
+    meta: [loc, timeShort, category].join(SEP),
+  };
+}

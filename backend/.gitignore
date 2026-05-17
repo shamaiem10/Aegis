@@ -1,11 +1,26 @@
+# FastAPI backend — local overrides
+
 .env
-.env.local
+.env.*
+!.env.example
+
+.venv/
+venv/
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+.cache/
 *.pem
-# Service account keys (Firebase / GCP) — never commit
+
 firebase-adminsdk-*.json
 *-firebase-adminsdk-*.json
 service-account*.json
-**/secrets/
+secrets/
 
-# Local API fallback caches
-.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage

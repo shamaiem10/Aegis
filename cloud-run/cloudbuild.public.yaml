@@ -1,0 +1,35 @@
+# Public Cloud Run deploy (anyone can call API without IAM token).
+# Submit: gcloud builds submit --config cloudbuild.public.yaml --project aegis-496207
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["build", "-t", "gcr.io/aegis-496207/crisis-api-gateway", "."]
+
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["push", "gcr.io/aegis-496207/crisis-api-gateway"]
+
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: gcloud
+    args:
+      - "run"
+      - "deploy"
+      - "crisis-api-gateway"
+      - "--image"
+      - "gcr.io/aegis-496207/crisis-api-gateway"
+      - "--region"
+      - "us-central1"
+      - "--platform"
+      - "managed"
+      - "--service-account"
+      - "firebase-adminsdk-fbsvc@aegis-496207.iam.gserviceaccount.com"
+      - "--memory"
+      - "2Gi"
+      - "--cpu"
+      - "2"
+      - "--max-instances"
+      - "10"
+      - "--allow-unauthenticated"
+      - "--set-env-vars"
+      - "GCP_PROJECT_ID=aegis-496207,GCP_REGION=us-central1,PK_MOCK_ALERTS_URL=https://pk-mock-category-apis.vercel.app,PK_RESOURCES_INVENTORY_URL=https://pk-resource-inventory-api.vercel.app,PIPELINE_FAST_MODE=1,LLM_PRIMARY=groq"
+
+images:
+  - "gcr.io/aegis-496207/crisis-api-gateway"

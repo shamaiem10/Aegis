@@ -44,10 +44,7 @@ Rules: Pakistan context (NDMA, NHMP, Rescue 1122). 4-5 action tasks. Be concise.
 const now = () => new Date().toISOString();
 /** One Gemini call instead of three — much faster for mobile enrich. */
 async function runCombinedEnrichmentAgent(signal, crisisId) {
-    const parsed = await (0, geminiGenerate_1.generateGeminiJson)({
-        instruction: INSTRUCTION,
-        input: { signal, crisisId },
-    });
+    const parsed = await (0, geminiGenerate_1.generateGeminiJson)({ instruction: INSTRUCTION, input: { signal, crisisId } }, { providers: (0, geminiGenerate_1.agentLlmProviders)() });
     const triage = parsed.triage;
     const analysis = parsed.analysis;
     const actionPlan = parsed.actionPlan;

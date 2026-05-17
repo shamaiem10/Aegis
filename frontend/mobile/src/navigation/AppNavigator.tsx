@@ -10,12 +10,13 @@ import { SignalsFeedScreen } from "../screens/SignalsFeedScreen";
 import { CrisesScreen } from "../screens/CrisesScreen";
 import { CrisisDetailScreen } from "../screens/CrisisDetailScreen";
 import { ResourcesScreen } from "../screens/ResourcesScreen";
+import { EmergencyResourcesScreen } from "../screens/EmergencyResourcesScreen";
 import { OperationsScreen } from "../screens/OperationsScreen";
 import { AgentTracesScreen } from "../screens/AgentTracesScreen";
 import { IntegrationsScreen } from "../screens/IntegrationsScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { WeatherScreen } from "../screens/WeatherScreen";
-import { FalseAlarmScreen } from "../screens/FalseAlarmScreen";
+import { SimulationTabScreen } from "../screens/SimulationTabScreen";
 import { PredictionsScreen } from "../screens/PredictionsScreen";
 import { AlertAnalysisScreen } from "../screens/AlertAnalysisScreen";
 import { ActionPlanScreen } from "../screens/ActionPlanScreen";
@@ -124,12 +125,21 @@ function RootStackNavigator() {
         options={({ route }) => ({ title: route.params.id })}
       />
       <Stack.Screen name="Resources" component={ResourcesScreen} options={{ title: "ResourcesScreen" }} />
+      <Stack.Screen
+        name="EmergencyResources"
+        component={EmergencyResourcesScreen}
+        options={{ title: "Emergency resources" }}
+      />
       <Stack.Screen name="Operations" component={OperationsScreen} options={{ title: "Pipeline" }} />
       <Stack.Screen name="AgentTraces" component={AgentTracesScreen} options={{ title: "Agent traces" }} />
       <Stack.Screen name="Integrations" component={IntegrationsScreen} options={{ title: "Integrations" }} />
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: "Settings" }} />
       <Stack.Screen name="Weather" component={WeatherScreen} options={{ title: "Weather" }} />
-      <Stack.Screen name="FalseAlarm" component={FalseAlarmScreen} options={{ title: "False alarms" }} />
+      <Stack.Screen
+        name="SimulationOverview"
+        component={SimulationTabScreen}
+        options={{ title: "Simulation" }}
+      />
       <Stack.Screen name="Predictions" component={PredictionsScreen} options={{ title: "Predictions" }} />
     </Stack.Navigator>
   );

@@ -1,4 +1,4 @@
-import type { CrisisDossierApi, CrisisStatusApi } from "../api/types";
+import type { CrisisDossierApi, CrisisStatusApi, ResourceUnitApi } from "../api/types";
 
 import { DEMO_ORCHESTRATION_META } from "./demoOrchestrationMeta";
 
@@ -46,6 +46,87 @@ export function demoGetCrisis(id: string): CrisisDossierApi | undefined {
   return ensure().find((d) => d.crisis_id === id);
 }
 
+let demoInventory: ResourceUnitApi[] = [
+  {
+    resource_id: "isb_rescue_1122_alpha",
+    name: "Rescue 1122 — Islamabad",
+    kind: "rescue_water",
+    agency: "Rescue 1122",
+    quantity_available: 12,
+    quantity_total: 16,
+  },
+  {
+    resource_id: "isb_ems_central",
+    name: "PIMS EMS staging",
+    kind: "medical",
+    agency: "PIMS",
+    quantity_available: 18,
+    quantity_total: 22,
+  },
+  {
+    resource_id: "isb_traffic_cell",
+    name: "ICT Police traffic cell",
+    kind: "security",
+    agency: "ICT Police",
+    quantity_available: 40,
+    quantity_total: 48,
+  },
+];
+
+export function demoGetInventoryUnits(): ResourceUnitApi[] {
+  return clone(demoInventory);
+}
+
+function releaseDemoAllocation(dossier: CrisisDossierApi): void {
+  for (const u of dossier.allocation?.units ?? []) {
+    const qty = u.quantity_available ?? 0;
+    if (qty <= 0) continue;
+    const inv = demoInventory.find((x) => x.resource_id === u.resource_id);
+    if (inv) {
+      const cap = inv.quantity_total ?? inv.quantity_available + qty;
+      inv.quantity_available = Math.min(inv.quantity_available + qty, cap);
+    }
+  }
+  dossier.allocation = { units: [], notes: "Resources released (demo)" };
+}
+
+export function demoAllocateResources(
+  crisisId: string,
+  assignments: { resource_id: string; quantity: number }[],
+): CrisisDossierApi {
+  ensure();
+  const i = dossiers.findIndex((d) => d.crisis_id === crisisId);
+  if (i < 0) throw new Error(`demo: crisis not found (${crisisId})`);
+  const next = clone(dossiers[i]);
+  releaseDemoAllocation(next);
+
+  const units: ResourceUnitApi[] = [];
+  for (const row of assignments) {
+    const q = Math.max(0, Math.floor(row.quantity));
+    if (q <= 0) continue;
+    const inv = demoInventory.find((x) => x.resource_id === row.resource_id);
+    if (!inv) throw new Error(`unknown_resource:${row.resource_id}`);
+    if (inv.quantity_available < q) {
+      throw new Error(`insufficient:${row.resource_id}:${inv.quantity_available}:${q}`);
+    }
+    inv.quantity_available -= q;
+    units.push({
+      resource_id: inv.resource_id,
+      name: inv.name,
+      kind: inv.kind,
+      agency: inv.agency,
+      quantity_available: q,
+      quantity_total: q,
+    });
+  }
+  next.allocation = {
+    units,
+    notes: `Demo: committed ${units.length} resource line(s)`,
+  };
+  dossiers[i] = next;
+  return next;
+}
+
 export function demoPatchStatus(
   id: string,
   status: CrisisStatusApi,
@@ -56,6 +137,12 @@ export function demoPatchStatus(
     throw new Error(`demo: crisis not found (${id})`);
   }
   const next = clone(dossiers[i]);
+  if (
+    (status === "resolved" || status === "false_alarm") &&
+    (next.allocation?.units?.length ?? 0) > 0
+  ) {
+    releaseDemoAllocation(next);
+  }
   next.status = status;
   dossiers[i] = next;
   return next;

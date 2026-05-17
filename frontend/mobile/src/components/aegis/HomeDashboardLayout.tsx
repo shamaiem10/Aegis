@@ -1,18 +1,12 @@
 /**
- * Home dashboard presentation — sectioned cards, 2×2 KPI grid, no nested horizontal KPI scroll.
+ * Home dashboard — compact hierarchy: status → stats → actions → env → alerts.
  */
 
 import type { ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View, useColorScheme } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { AegisMap } from "../../../components/AegisMap";
-import {
-  Card,
-  MapCardChrome,
-  KpiTile,
-  Pill,
-  type AlertPriority,
-} from "./AppShell";
+import { Card, Pill } from "./AppShell";
 import { EnvCityPicker } from "./EnvCityPicker";
 import { EnvRiskBar } from "./EnvRiskBars";
 import { HomeAlertRow } from "./HomeAlertRow";
@@ -21,7 +15,8 @@ import type { MapRegion } from "../../types/map-region";
 import type { IonName } from "../../utils/alertIcons";
 import { getAQIColor, getAQILabel } from "../../utils/aqi";
 import { useAegisUi } from "../../hooks/useAegisUi";
-import { connectivityHintForApiBase } from "../../api/client";
+import { useRootStackNavigation } from "../../navigation/useRootStackNavigation";
+import { useAiSeverityIndex } from "../../../lib/firestore/hooks";
 
 export type HomeAlertRowData = {
   key: string;
@@ -29,7 +24,7 @@ export type HomeAlertRowData = {
   iconName: IonName;
   title: string;
   timeLine: string;
-  priority: AlertPriority;
+  priority: import("./AppShell").AlertPriority;
 };
 
 export type HomeCrisisCard = {
@@ -42,70 +37,84 @@ export type HomeCrisisCard = {
 
 export type FusionChip = { label: string; icon: IonName };
 
-function SectionCard({
-  eyebrow,
-  title,
-  subtitle,
-  children,
-  accent,
+function StatCell({
+  label,
+  value,
+  tone = "default",
 }: {
-  eyebrow: string;
-  title?: string;
-  subtitle?: string;
-  children: ReactNode;
-  accent?: "default" | "pulse";
+  label: string;
+  value: string;
+  tone?: "default" | "warn" | "ok";
 }) {
-  const { tc, cardPadding, cardRadius } = useAegisUi();
+  const { tc, r } = useAegisUi();
   const night = useColorScheme() === "dark";
+  const bg =
+    tone === "warn" ? (night ? "#3b1720" : "#fff1f2") : tone === "ok" ? tc.tealSoft : tc.card;
+  const fg = tone === "warn" ? tc.alertDeep : tone === "ok" ? tc.tealDeep : tc.ink;
 
   return (
-    <View
-      style={[
-        sec.wrap,
-        {
-          padding: cardPadding,
-          borderRadius: cardRadius,
-          backgroundColor: accent === "pulse" ? (night ? tc.cardTint : tc.sky) : tc.card,
-          borderColor: tc.border,
-        },
-      ]}
-    >
-      <Text style={[sec.eyebrow, { color: accent === "pulse" ? tc.tealDeep : tc.inkMuted }]}>{eyebrow}</Text>
-      {title ? <Text style={[sec.title, { color: tc.ink }]}>{title}</Text> : null}
-      {subtitle ? <Text style={[sec.sub, { color: tc.inkMuted }]}>{subtitle}</Text> : null}
-      {children}
+    <View style={[st.cell, { backgroundColor: bg, borderColor: tc.borderSoft, minWidth: r.isCompact ? "47%" : "48%" }]}>
+      <Text style={[st.val, { color: fg }]} numberOfLines={1}>
+        {value}
+      </Text>
+      <Text style={[st.lbl, { color: tc.inkMuted }]} numberOfLines={2}>
+        {label}
+      </Text>
     </View>
   );
 }
 
-function QuickAction({
-  label,
-  icon,
-  onPress,
-}: {
-  label: string;
-  icon: IonName;
-  onPress: () => void;
-}) {
+function ActionTile({ label, icon, onPress }: { label: string; icon: IonName; onPress: () => void }) {
   const { tc, minTouch } = useAegisUi();
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
-        qa.btn,
+        act.tile,
         {
           backgroundColor: tc.card,
-          borderColor: tc.border,
-          minHeight: minTouch,
-          opacity: pressed ? 0.9 : 1,
+          borderColor: tc.borderSoft,
+          minHeight: Math.max(minTouch, 48),
+          opacity: pressed ? 0.88 : 1,
         },
       ]}
     >
-      <Ionicons name={icon} size={18} color={tc.tealDeep} />
-      <Text style={[qa.label, { color: tc.ink }]}>{label}</Text>
+      <Ionicons name={icon} size={20} color={tc.tealDeep} />
+      <Text style={[act.lbl, { color: tc.ink }]} numberOfLines={1}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
+
+function Block({
+  title,
+  actionLabel,
+  onAction,
+  children,
+}: {
+  title: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  children: ReactNode;
+}) {
+  const { tc } = useAegisUi();
+  return (
+    <View style={blk.wrap}>
+      <View style={blk.head}>
+        <Text style={[blk.title, { color: tc.inkMuted }]}>{title}</Text>
+        {actionLabel && onAction ? (
+          <Pressable onPress={onAction} hitSlop={10}>
+            <Text style={[blk.link, { color: tc.tealDeep }]}>{actionLabel}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+      {children}
+    </View>
+  );
+}
+
+const PULSE_PLACEHOLDER_PREFIX = "No live orchestration summary yet";
 
 export function HomeDashboardLayout({
   contentPadding,
@@ -125,12 +134,12 @@ export function HomeDashboardLayout({
   onZoomOut,
   demoMode,
   hqOnline,
-  hqHelp,
-  basePreview,
+  hqHelp: _hqHelp,
+  basePreview: _basePreview,
   onConnectionSettings,
-  fusionChips,
-  allocHint,
-  signalsEmptyHint,
+  fusionChips: _fusionChips,
+  allocHint: _allocHint,
+  signalsEmptyHint: _signalsEmptyHint,
   kpiSignals,
   crisisProbPct,
   kpiCrisisHint,
@@ -149,11 +158,7 @@ export function HomeDashboardLayout({
   onOpenCrisesTab,
   onOpenAlert,
 }: {
-  contentPadding: {
-    paddingHorizontal: number;
-    paddingTop: number;
-    paddingBottom: number;
-  };
+  contentPadding: { paddingHorizontal: number; paddingTop: number; paddingBottom: number };
   localityLabel: string;
   isStable: boolean;
   feedSummary: string;
@@ -194,412 +199,341 @@ export function HomeDashboardLayout({
   onOpenCrisesTab: () => void;
   onOpenAlert: (signalId?: string) => void;
 }) {
-  const { tc, r, contentWrap, sectionGap, cardRadius } = useAegisUi();
+  const { tc, r, contentWrap, sectionGap } = useAegisUi();
+  const rootNav = useRootStackNavigation();
   const night = useColorScheme() === "dark";
+  const { data: aiSeverity, loading: aiSevLoading } = useAiSeverityIndex(
+    envIndex,
+    selectedCity,
+    envLoading,
+  );
+
+  const heatVal = aiSeverity?.heat.value ?? envIndex.heat.value;
+  const airVal = aiSeverity?.air.value ?? envIndex.air.value;
+  const floodVal = aiSeverity?.flood.value ?? envIndex.flood.value;
+  const mapH = r.isCompact ? Math.min(160, r.mapHeight) : Math.min(200, r.mapHeight);
+  const showPulse =
+    pulseText.trim().length > 0 && !pulseText.startsWith(PULSE_PLACEHOLDER_PREFIX);
+  const connLabel =
+    hqOnline === false ? "Offline" : demoMode ? "Demo" : hqOnline ? "Live" : "…";
+  const aqiHint =
+    displayAqi != null ? getAQILabel(displayAqi) : envLoading ? "Loading" : "—";
 
   return (
     <ScrollView
-      nestedScrollEnabled
-      keyboardShouldPersistTaps="handled"
       style={[styles.scroll, { backgroundColor: tc.canvas }]}
       contentContainerStyle={[contentWrap, contentPadding, styles.inner]}
+      keyboardShouldPersistTaps="handled"
     >
-      <View style={styles.headerBlock}>
-        <View style={styles.headerTop}>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={[styles.greet, { color: tc.inkSoft, fontSize: r.bodySize(14) }]}>Good morning</Text>
-            <Text style={[styles.headline, { color: tc.ink, fontSize: r.titleSize(26) }]} numberOfLines={2}>
-              Response Team
-            </Text>
-          </View>
-          <Pressable
-            onPress={onSettings}
-            style={[styles.gear, { backgroundColor: tc.card, borderColor: tc.border }]}
-            hitSlop={12}
-            accessibilityLabel="Settings"
-          >
-            <Ionicons name="settings-outline" size={22} color={tc.inkSoft} />
-          </Pressable>
-        </View>
-
-        <View
-          style={[
-            styles.statusPill,
-            {
-              backgroundColor: isStable ? tc.accentGreenSoft : tc.warnSurface,
-              borderColor: isStable ? tc.borderSoft : tc.amber,
-            },
-          ]}
-        >
-          <View style={[styles.statusDot, { backgroundColor: isStable ? tc.accentGreen : tc.amber }]} />
-          <Text
-            style={[styles.statusTxt, { color: isStable ? tc.mintDark : tc.amberDeep }]}
-            numberOfLines={1}
-          >
-            {isStable ? `${localityLabel} · steady` : `${localityLabel} · watch`}
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={[styles.eyebrow, { color: tc.tealDeep }]}>HOME</Text>
+          <Text style={[styles.title, { color: tc.ink, fontSize: r.titleSize(22) }]} numberOfLines={1}>
+            {localityLabel}
           </Text>
         </View>
+        <Pressable
+          onPress={onSettings}
+          style={[styles.iconBtn, { borderColor: tc.borderSoft, backgroundColor: tc.card }]}
+          accessibilityLabel="Settings"
+        >
+          <Ionicons name="settings-outline" size={22} color={tc.inkSoft} />
+        </Pressable>
+      </View>
 
-        <Text style={[styles.feedLine, { color: tc.inkMuted }]} numberOfLines={1}>
+      <View style={styles.statusRow}>
+        <Pill tone={isStable ? "mint" : "amber"}>{isStable ? "Steady" : "Elevated"}</Pill>
+        <Pill tone={hqOnline === false ? "alert" : demoMode ? "amber" : "mint"}>{connLabel}</Pill>
+        <Text style={[styles.feed, { color: tc.inkMuted }]} numberOfLines={1}>
           {feedSummary}
         </Text>
       </View>
 
-      <View style={[styles.quickRow, { gap: r.gap }]}>
-        <QuickAction label="Alerts" icon="notifications-outline" onPress={onOpenAlerts} />
-        <QuickAction label="Crises" icon="flame-outline" onPress={onOpenCrisesTab} />
-      </View>
+      {hqOnline === false ? (
+        <Pressable onPress={onConnectionSettings} style={[styles.offlineBar, { borderColor: tc.amber }]}>
+          <Ionicons name="cloud-offline-outline" size={16} color={tc.amberDeep} />
+          <Text style={[styles.offlineTxt, { color: tc.ink }]} numberOfLines={2}>
+            API unreachable — tap to fix connection
+          </Text>
+        </Pressable>
+      ) : null}
 
       {showSeverityBanner ? (
         <Pressable
           onPress={onOpenCrises}
           style={[
-            styles.banner,
+            styles.alertBanner,
             {
-              backgroundColor: night ? "#3b0764" : "#f3e8ff",
-              borderColor:
-                displayAqi != null && displayAqi > 200 ? getAQIColor(displayAqi, night) : tc.border,
+              backgroundColor: night ? "#3b1720" : "#fff1f2",
+              borderColor: tc.alert,
             },
           ]}
         >
-          <Ionicons
-            name="warning-outline"
-            size={20}
-            color={getAQIColor(displayAqi != null && displayAqi > 200 ? displayAqi : 180, night)}
-          />
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={[styles.bannerTitle, { color: tc.ink }]} numberOfLines={2}>
-              {crisisCriticalLabels} critical incident{crisisCriticalLabels === 1 ? "" : "s"}
-              {displayAqi != null && displayAqi > 200 ? ` · AQI ${displayAqi}` : ""}
-              {severityBannerLeadCrisis ? ` · ${severityBannerLeadCrisis}` : ""}
-            </Text>
-            <Text style={[styles.bannerSub, { color: tc.inkSoft }]}>Tap to review active crises</Text>
-          </View>
-          {displayAqi != null && displayAqi > 200 ? (
-            <View style={[styles.aqiChip, { borderColor: getAQIColor(displayAqi, night) }]}>
-              <Text style={{ fontSize: 11, fontWeight: "900", color: getAQIColor(displayAqi, night) }}>
-                {displayAqi}
-              </Text>
-            </View>
-          ) : null}
+          <Ionicons name="warning" size={18} color={tc.alertDeep} />
+          <Text style={[styles.alertBannerTxt, { color: tc.ink }]} numberOfLines={2}>
+            {crisisCriticalLabels} critical
+            {displayAqi != null && displayAqi > 150 ? ` · AQI ${displayAqi}` : ""}
+            {severityBannerLeadCrisis ? ` · ${severityBannerLeadCrisis}` : ""}
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color={tc.inkMuted} />
         </Pressable>
       ) : null}
 
-      <Card style={[styles.mapCard, { backgroundColor: tc.card, borderColor: tc.border, borderRadius: cardRadius }]}>
-        <MapCardChrome
-          eyebrow="LIVE MAP"
-          title="Operations grid"
-          hint="Your device region. Pins appear when signals include coordinates."
-          onZoomIn={onZoomIn}
-          onZoomOut={onZoomOut}
+      {/* Stats 2×2 */}
+      <View style={[styles.statGrid, { gap: r.gap }]}>
+        <StatCell label="Signals" value={String(kpiSignals)} />
+        <StatCell
+          label="Crisis risk"
+          value={`${crisisProbPct}%`}
+          tone={crisisProbPct > 25 ? "warn" : "default"}
         />
-        {locationError ? <Text style={[styles.warn, { color: tc.alertDeep }]}>{locationError}</Text> : null}
-        <View style={[styles.mapWrap, { height: r.mapHeight, borderColor: tc.border, backgroundColor: tc.muted }]}>
-          <AegisMap region={region} latitudeDelta={mapDelta} longitudeDelta={mapDelta} />
-        </View>
-        <View style={styles.pillRow}>
-          <Pill tone="ink">Grid</Pill>
-          {demoMode ? <Pill tone="amber">Demo</Pill> : <Pill tone="mint">Live feeds</Pill>}
-          <Pill tone={hqOnline === false ? "alert" : "mint"}>{hqOnline === false ? "Offline" : "Connected"}</Pill>
-        </View>
-        {!demoMode && hqOnline === false && hqHelp ? (
-          <View style={[styles.hqBox, { backgroundColor: tc.sky, borderColor: tc.tealSoft }]}>
-            <Text style={[styles.hqHelp, { color: tc.ink }]}>
-              {hqHelp}
-              {connectivityHintForApiBase(basePreview)}
-            </Text>
-            <Pressable onPress={onConnectionSettings} style={[styles.hqBtn, { backgroundColor: tc.card, borderColor: tc.border }]}>
-              <Text style={[styles.hqBtnTxt, { color: tc.primaryDark }]}>Connection settings</Text>
+        <StatCell
+          label="Air quality"
+          value={displayAqi != null ? String(displayAqi) : "—"}
+          tone={displayAqi != null && displayAqi > 150 ? "warn" : "default"}
+        />
+        <StatCell
+          label="Confidence"
+          value={hqOnline === false ? "—" : responseEffDisplay}
+          tone="ok"
+        />
+      </View>
+      <Text style={[styles.statHint, { color: tc.inkMuted }]} numberOfLines={1}>
+        {kpiCrisisHint} risk · {aqiHint}
+      </Text>
+
+      {/* Quick actions 2×2 */}
+      <View style={[styles.actionGrid, { gap: r.gap, marginTop: sectionGap }]}>
+        <ActionTile label="Alerts" icon="notifications-outline" onPress={onOpenAlerts} />
+        <ActionTile label="Reports" icon="document-text-outline" onPress={() => rootNav.navigate("MainTabs", { screen: "Reports" })} />
+        <ActionTile label="Crises" icon="flame-outline" onPress={onOpenCrisesTab} />
+        <ActionTile
+          label="Resources"
+          icon="medkit-outline"
+          onPress={() => rootNav.navigate("EmergencyResources")}
+        />
+      </View>
+
+      {/* Map — compact */}
+      <Card style={[styles.mapCard, { marginTop: sectionGap, borderColor: tc.borderSoft }]}>
+        <View style={styles.mapHead}>
+          <Text style={[styles.mapTitle, { color: tc.ink }]}>Live map</Text>
+          <View style={styles.mapZoom}>
+            <Pressable onPress={onZoomOut} hitSlop={8} style={styles.zoomBtn}>
+              <Ionicons name="remove" size={18} color={tc.inkSoft} />
+            </Pressable>
+            <Pressable onPress={onZoomIn} hitSlop={8} style={styles.zoomBtn}>
+              <Ionicons name="add" size={18} color={tc.inkSoft} />
             </Pressable>
           </View>
+        </View>
+        {locationError ? (
+          <Text style={[styles.mapErr, { color: tc.alertDeep }]} numberOfLines={2}>
+            {locationError}
+          </Text>
         ) : null}
+        <View style={[styles.mapBox, { height: mapH, backgroundColor: tc.muted }]}>
+          <AegisMap region={region} latitudeDelta={mapDelta} longitudeDelta={mapDelta} />
+        </View>
       </Card>
 
-      {fusionChips.length > 0 ? (
-        <View style={[styles.chipWrap, { marginTop: sectionGap }]}>
-          {fusionChips.map((t, i) => (
-            <View
-              key={`${t.label}-${i}`}
-              style={[styles.chip, { backgroundColor: tc.card, borderColor: tc.border }]}
-            >
-              <Ionicons name={t.icon} size={14} color={tc.tealDeep} />
-              <Text style={[styles.chipTxt, { color: tc.ink }]}>{t.label}</Text>
-            </View>
-          ))}
-        </View>
-      ) : signalsEmptyHint ? (
-        <Text style={[styles.hint, { color: tc.inkSoft, marginTop: sectionGap }]}>{signalsEmptyHint}</Text>
-      ) : null}
-
-      {allocHint && allocHint.units > 0 ? (
-        <View style={{ marginTop: 10 }}>
-          <Pill tone="amber">
-            {allocHint.units} resource unit{allocHint.units === 1 ? "" : "s"} · {allocHint.incidents} dossier
-            {allocHint.incidents === 1 ? "" : "s"}
-          </Pill>
-        </View>
-      ) : null}
-
-      <View style={[styles.kpiGrid, { marginTop: sectionGap, gap: r.gap }]}>
-        <View style={styles.kpiCell}>
-          <KpiTile
-            label="Active signals"
-            value={String(kpiSignals)}
-            hint="from ingested feeds"
-            hintTone="green"
-            iconName="pulse-outline"
-          />
-        </View>
-        <View style={styles.kpiCell}>
-          <KpiTile
-            label="Crisis probability"
-            value={`${crisisProbPct}%`}
-            hint={kpiCrisisHint}
-            hintTone={crisisProbPct > 20 ? "red" : "green"}
-            iconName="warning-outline"
-          />
-        </View>
-        <View style={styles.kpiCell}>
-          <KpiTile
-            label="City AQI"
-            value={displayAqi != null ? String(displayAqi) : "—"}
-            hint={
-              displayAqi != null ?
-                `${getAQILabel(displayAqi)} · Open-Meteo`
-              : envLoading ?
-                "loading air…"
-              : "unavailable"
-            }
-            hintTone={displayAqi != null && displayAqi > 150 ? "red" : "green"}
-            iconName="leaf-outline"
-          />
-        </View>
-        <View style={styles.kpiCell}>
-          <KpiTile
-            label="Response eff."
-            value={hqOnline === false ? "—" : responseEffDisplay}
-            hint="avg dossier confidence"
-            hintTone="green"
-            iconName="shield-checkmark-outline"
-          />
-        </View>
-      </View>
-
+      {/* Environment — one card, tight */}
       <View style={{ marginTop: sectionGap }}>
-        <SectionCard
-          eyebrow="ENVIRONMENTAL RISK"
-          subtitle="Open-Meteo air & heat · GDACS floods (independent of alert mocks)"
-        >
-          <EnvCityPicker selected={selectedCity} onSelect={onSelectCity} disabled={envLoading} />
-          {envLoading ? (
-            <Text style={[styles.hint, { color: tc.inkSoft, marginTop: 10 }]}>
-              Loading environmental data
-              {selectedCity === "all" ? " for Pakistan…" : ` for ${selectedCity}…`}
-            </Text>
-          ) : null}
-          {!envLoading && !envIndex.hasAny ? (
-            <Text style={[styles.hint, { color: tc.inkSoft, marginTop: 10 }]}>
-              Live environmental APIs unreachable. Mock alerts on the Alerts tab are unchanged.
-            </Text>
-          ) : null}
-          <EnvRiskBar label="Heat stress" value={envIndex.heat.value} color="#ea580c" sub={envIndex.heat.sub} />
-          <EnvRiskBar
-            label="Air quality"
-            value={envIndex.air.value}
-            color={displayAqi != null ? getAQIColor(displayAqi, night) : "#7c3aed"}
-            sub={envIndex.air.sub}
-          />
-          <EnvRiskBar label="Flood risk" value={envIndex.flood.value} color="#2563eb" sub={envIndex.flood.sub} />
-        </SectionCard>
+        <Block title="ENVIRONMENT">
+          <Card style={{ borderColor: tc.borderSoft, padding: 14 }}>
+            <View style={styles.envHead}>
+              <Pill tone={aiSeverity?.degradedMode ? "amber" : "mint"}>
+                {aiSevLoading ? "Updating…" : "AI index"}
+              </Pill>
+              {aiSeverity ? (
+                <Text style={[styles.riskScore, { color: tc.ink }]}>
+                  Risk {aiSeverity.overallRiskScore}%
+                </Text>
+              ) : null}
+            </View>
+            <EnvCityPicker selected={selectedCity} onSelect={onSelectCity} disabled={envLoading} />
+            {aiSeverity?.countrySummary ? (
+              <Text style={[styles.aiLine, { color: tc.inkSoft }]} numberOfLines={2}>
+                {aiSeverity.countrySummary}
+              </Text>
+            ) : null}
+            <EnvRiskBar
+              label="Heat"
+              value={heatVal}
+              color="#ea580c"
+              sub={aiSeverity?.heat.sub ?? envIndex.heat.sub}
+            />
+            <EnvRiskBar
+              label="Air"
+              value={airVal}
+              color={displayAqi != null ? getAQIColor(displayAqi, night) : "#7c3aed"}
+              sub={aiSeverity?.air.sub ?? envIndex.air.sub}
+            />
+            <EnvRiskBar
+              label="Flood"
+              value={floodVal}
+              color="#2563eb"
+              sub={aiSeverity?.flood.sub ?? envIndex.flood.sub}
+            />
+          </Card>
+        </Block>
       </View>
+
+      {showPulse ? (
+        <View style={[styles.pulseBox, { marginTop: sectionGap, backgroundColor: tc.tealSoft, borderColor: tc.borderSoft }]}>
+          <Text style={[styles.pulseLbl, { color: tc.tealDeep }]}>AI pulse</Text>
+          <Text style={[styles.pulseTxt, { color: tc.ink }]} numberOfLines={3}>
+            {pulseText}
+          </Text>
+        </View>
+      ) : null}
 
       {topCrises.length > 0 ? (
         <View style={{ marginTop: sectionGap }}>
-          <View style={styles.sectionHead}>
-            <Text style={[styles.sectionEyebrow, { color: tc.inkMuted }]}>ACTIVE CRISES</Text>
-            <Pressable onPress={onOpenCrisesTab} hitSlop={8}>
-              <Text style={[styles.sectionLink, { color: tc.tealDeep }]}>See all</Text>
-            </Pressable>
-          </View>
-          {topCrises.map((c) => (
-            <Pressable
-              key={c.crisisId}
-              onPress={() => onOpenCrisis(c.crisisId)}
-              style={[
-                styles.crisisCard,
-                {
-                  backgroundColor: tc.card,
-                  borderColor: tc.border,
-                  borderLeftColor: c.borderColor,
-                },
-              ]}
-            >
-              <Ionicons name={c.icon} size={22} color={c.borderColor} />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={[styles.crisisTitle, { color: tc.ink }]} numberOfLines={2}>
-                  {c.name}
-                </Text>
-                <Text style={[styles.crisisMeta, { color: tc.inkSoft }]} numberOfLines={2}>
-                  {c.metaLine}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={tc.inkMuted} />
-            </Pressable>
-          ))}
+          <Block title="TOP CRISES" actionLabel="All" onAction={onOpenCrisesTab}>
+            {topCrises.slice(0, 2).map((c) => (
+              <Pressable
+                key={c.crisisId}
+                onPress={() => onOpenCrisis(c.crisisId)}
+                style={[styles.crisisRow, { backgroundColor: tc.card, borderColor: tc.borderSoft, borderLeftColor: c.borderColor }]}
+              >
+                <Ionicons name={c.icon} size={20} color={c.borderColor} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[styles.crisisName, { color: tc.ink }]} numberOfLines={1}>
+                    {c.name}
+                  </Text>
+                  <Text style={[styles.crisisMeta, { color: tc.inkMuted }]} numberOfLines={1}>
+                    {c.metaLine}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={tc.inkMuted} />
+              </Pressable>
+            ))}
+          </Block>
         </View>
       ) : null}
 
       <View style={{ marginTop: sectionGap }}>
-        <SectionCard eyebrow="AI PULSE · ANTIGRAVITY" accent="pulse">
-          <Text style={[styles.pulseBody, { color: tc.ink }]}>{pulseText}</Text>
-        </SectionCard>
+        <Block title="RECENT ALERTS" actionLabel="All" onAction={onViewAllAlerts}>
+          {alertRows.slice(0, 3).map((row) => (
+            <HomeAlertRow
+              key={row.key}
+              iconName={row.iconName}
+              title={row.title}
+              timeLabel={row.timeLine}
+              priority={row.priority}
+              onPress={() => onOpenAlert(row.signalId)}
+            />
+          ))}
+          {alertRows.length === 0 && alertsEmptyHint ? (
+            <Text style={[styles.empty, { color: tc.inkMuted }]}>{alertsEmptyHint}</Text>
+          ) : null}
+        </Block>
       </View>
-
-      <View style={[styles.sectionHead, { marginTop: sectionGap }]}>
-        <Text style={[styles.sectionEyebrow, { color: tc.inkMuted }]}>RECENT ALERTS</Text>
-        <Pressable onPress={onViewAllAlerts} hitSlop={8}>
-          <Text style={[styles.sectionLink, { color: tc.tealDeep }]}>View all</Text>
-        </Pressable>
-      </View>
-
-      {alertRows.map((row) => (
-        <HomeAlertRow
-          key={row.key}
-          iconName={row.iconName}
-          title={row.title}
-          timeLabel={row.timeLine}
-          priority={row.priority}
-          onPress={() => onOpenAlert(row.signalId)}
-        />
-      ))}
-      {alertRows.length === 0 && alertsEmptyHint ? (
-        <Text style={[styles.hint, { color: tc.inkSoft, marginTop: 8, lineHeight: 20 }]}>{alertsEmptyHint}</Text>
-      ) : null}
     </ScrollView>
   );
 }
 
-const sec = StyleSheet.create({
-  wrap: { borderWidth: 1 },
-  eyebrow: { fontSize: 10, fontWeight: "900", letterSpacing: 1.4 },
-  title: { marginTop: 6, fontSize: 17, fontWeight: "800" },
-  sub: { marginTop: 6, fontSize: 12, fontWeight: "600", lineHeight: 17 },
+const st = StyleSheet.create({
+  cell: {
+    flexGrow: 1,
+    flexBasis: "48%",
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  val: { fontSize: 22, fontWeight: "900", letterSpacing: -0.5 },
+  lbl: { marginTop: 4, fontSize: 11, fontWeight: "700", lineHeight: 14 },
 });
 
-const qa = StyleSheet.create({
-  btn: {
+const act = StyleSheet.create({
+  tile: {
     flex: 1,
+    flexBasis: "48%",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
     paddingVertical: 12,
-    paddingHorizontal: 14,
+    paddingHorizontal: 10,
     borderRadius: 14,
     borderWidth: 1,
   },
-  label: { fontSize: 14, fontWeight: "800" },
+  lbl: { fontSize: 13, fontWeight: "800", flexShrink: 1 },
+});
+
+const blk = StyleSheet.create({
+  wrap: { marginBottom: 4 },
+  head: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+  title: { fontSize: 11, fontWeight: "900", letterSpacing: 1.2 },
+  link: { fontSize: 13, fontWeight: "800" },
 });
 
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
-  inner: {},
-  headerBlock: { marginBottom: 4 },
-  headerTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  greet: { fontWeight: "600" },
-  headline: { marginTop: 4, fontWeight: "800", letterSpacing: -0.5 },
-  gear: {
+  inner: { paddingBottom: 8 },
+  header: { flexDirection: "row", alignItems: "center", gap: 12 },
+  eyebrow: { fontSize: 10, fontWeight: "900", letterSpacing: 1.6 },
+  title: { marginTop: 2, fontWeight: "800" },
+  iconBtn: {
     width: 44,
     height: 44,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  statusPill: {
+  statusRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 10 },
+  feed: { flex: 1, minWidth: 100, fontSize: 11, fontWeight: "600" },
+  offlineBar: {
     flexDirection: "row",
     alignItems: "center",
-    alignSelf: "flex-start",
     gap: 8,
-    marginTop: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 999,
-    borderWidth: 1,
-    maxWidth: "100%",
-  },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
-  statusTxt: { fontSize: 13, fontWeight: "800", flexShrink: 1 },
-  feedLine: { marginTop: 10, fontSize: 12, fontWeight: "600" },
-  quickRow: { flexDirection: "row", marginTop: 16, marginBottom: 4 },
-  banner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 16,
-    borderRadius: 18,
-    borderWidth: 1,
-    marginTop: 14,
-  },
-  bannerTitle: { fontSize: 15, fontWeight: "900", lineHeight: 21 },
-  bannerSub: { fontSize: 12, fontWeight: "600", marginTop: 4 },
-  aqiChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1.5 },
-  mapCard: {
-    marginTop: 14,
-    paddingBottom: 16,
-    shadowColor: "#0f172a",
-    shadowOpacity: 0.06,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
-  },
-  mapWrap: { borderRadius: 22, overflow: "hidden", borderWidth: 1 },
-  warn: { marginBottom: 8, fontSize: 12, fontWeight: "600" },
-  pillRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 14 },
-  hqBox: { marginTop: 12, padding: 14, borderRadius: 16, borderWidth: 1 },
-  hqHelp: { fontSize: 12, lineHeight: 18, fontWeight: "600" },
-  hqBtn: {
     marginTop: 10,
-    alignSelf: "flex-start",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    padding: 10,
     borderRadius: 12,
     borderWidth: 1,
   },
-  hqBtnTxt: { fontSize: 12, fontWeight: "800" },
-  chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
+  offlineTxt: { flex: 1, fontSize: 12, fontWeight: "600" },
+  alertBanner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
+    gap: 10,
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
     borderWidth: 1,
   },
-  chipTxt: { fontSize: 12, fontWeight: "800" },
-  hint: { fontSize: 13, fontWeight: "600" },
-  kpiGrid: { flexDirection: "row", flexWrap: "wrap" },
-  kpiCell: { width: "48%", flexGrow: 1, minWidth: 148 },
-  sectionHead: {
+  alertBannerTxt: { flex: 1, fontSize: 13, fontWeight: "800" },
+  statGrid: { flexDirection: "row", flexWrap: "wrap", marginTop: 14 },
+  statHint: { marginTop: 6, fontSize: 11, fontWeight: "600" },
+  actionGrid: { flexDirection: "row", flexWrap: "wrap" },
+  mapCard: { padding: 12 },
+  mapHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+  mapTitle: { fontSize: 15, fontWeight: "800" },
+  mapZoom: { flexDirection: "row", gap: 4 },
+  zoomBtn: { padding: 6 },
+  mapErr: { fontSize: 11, marginBottom: 6 },
+  mapBox: { borderRadius: 12, overflow: "hidden" },
+  envHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" },
+  riskScore: { fontSize: 13, fontWeight: "800" },
+  aiLine: { fontSize: 12, fontWeight: "600", marginBottom: 8, lineHeight: 17 },
+  pulseBox: { padding: 12, borderRadius: 12, borderWidth: 1 },
+  pulseLbl: { fontSize: 10, fontWeight: "900", letterSpacing: 1, color: "#0d9488" },
+  pulseTxt: { marginTop: 6, fontSize: 13, fontWeight: "600", lineHeight: 18 },
+  crisisRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
-  },
-  sectionEyebrow: { fontSize: 11, fontWeight: "900", letterSpacing: 1.2 },
-  sectionLink: { fontSize: 14, fontWeight: "800" },
-  crisisCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginTop: 10,
-    padding: 16,
-    borderRadius: 18,
+    gap: 10,
+    marginTop: 8,
+    padding: 12,
+    borderRadius: 12,
     borderWidth: 1,
-    borderLeftWidth: 4,
+    borderLeftWidth: 3,
   },
-  crisisTitle: { fontSize: 16, fontWeight: "900", lineHeight: 22 },
-  crisisMeta: { marginTop: 4, fontSize: 12, fontWeight: "600", lineHeight: 17 },
-  pulseBody: { marginTop: 4, fontSize: 15, fontWeight: "600", lineHeight: 22 },
+  crisisName: { fontSize: 14, fontWeight: "800" },
+  crisisMeta: { marginTop: 2, fontSize: 11, fontWeight: "600" },
+  empty: { fontSize: 13, fontWeight: "600", lineHeight: 19, marginTop: 4 },
 });

@@ -3,20 +3,37 @@ import fetch from "node-fetch";
 
 import { parseAgentJsonText } from "../utils/agentJsonParse";
 
-export type LlmProvider = "gemini" | "openrouter" | "pollinations";
+export type LlmProvider = "groq" | "gemini" | "openrouter";
 
-const GEMINI_FALLBACK_MODELS = ["gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash-lite"];
+/** Preferred chain for agents — never includes deprecated Pollinations. */
+export function agentLlmProviders(): LlmProvider[] {
+  return resolveProviderOrder(["groq", "gemini", "openrouter"]);
+}
+
+const GEMINI_FALLBACK_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.0-flash-lite",
+  "gemini-flash-latest",
+];
+
+const GROQ_FALLBACK_MODELS = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
 
 export function geminiModelName(): string {
   const raw = process.env.GEMINI_VERTEX_MODEL?.trim() || "gemini-2.5-flash";
   return raw.replace(/^default\s+/i, "").trim() || "gemini-2.5-flash";
 }
 
+export function groqModelName(): string {
+  return process.env.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile";
+}
+
 export function openRouterModelName(): string {
-  return (
-    process.env.OPENROUTER_MODEL?.trim() ||
-    "google/gemini-2.5-flash-preview-05-20"
-  );
+  return process.env.OPENROUTER_MODEL?.trim() || "google/gemini-2.5-flash-preview-05-20";
+}
+
+function groqModelsToTry(): string[] {
+  const primary = groqModelName();
+  return [primary, ...GROQ_FALLBACK_MODELS.filter((m) => m !== primary)];
 }
 
 function geminiModelsToTry(): string[] {
@@ -38,7 +55,19 @@ export function gcpRegion(): string {
 }
 
 function maxOutputTokens(): number {
-  return Number(process.env.GEMINI_MAX_OUTPUT_TOKENS) || 8192;
+  return (
+    Number(process.env.LLM_MAX_OUTPUT_TOKENS) ||
+    Number(process.env.GEMINI_MAX_OUTPUT_TOKENS) ||
+    4096
+  );
+}
+
+function llmRequestTimeoutMs(): number {
+  return Number(process.env.LLM_REQUEST_TIMEOUT_MS) || 90_000;
+}
+
+export function hasGroqCredentials(): boolean {
+  return Boolean(process.env.GROQ_API_KEY?.trim());
 }
 
 export function hasGeminiCredentials(): boolean {
@@ -49,24 +78,100 @@ export function hasOpenRouterCredentials(): boolean {
   return Boolean(process.env.OPENROUTER_API_KEY?.trim());
 }
 
-/** Provider order: env LLM_PROVIDER + LLM_PRIMARY, with sensible defaults. */
+function providerAvailable(p: LlmProvider): boolean {
+  if (p === "groq") return hasGroqCredentials();
+  if (p === "gemini") return hasGeminiCredentials();
+  if (p === "openrouter") return hasOpenRouterCredentials();
+  return false;
+}
+
+function defaultPrimaryProvider(): LlmProvider {
+  if (hasGroqCredentials()) return "groq";
+  if (hasOpenRouterCredentials()) return "openrouter";
+  return "gemini";
+}
+
+/** Provider order: Groq-first when configured (fast JSON for all agents). */
 export function resolveProviderOrder(override?: LlmProvider[]): LlmProvider[] {
-  if (override?.length) return override;
+  if (override?.length) {
+    return override.filter(providerAvailable);
+  }
 
   const mode = (process.env.LLM_PROVIDER?.trim() || "auto").toLowerCase();
-  const primary = (process.env.LLM_PRIMARY?.trim() || "gemini").toLowerCase() as LlmProvider;
-  const secondary: LlmProvider = primary === "openrouter" ? "gemini" : "openrouter";
+  const primary = (process.env.LLM_PRIMARY?.trim()?.toLowerCase() || defaultPrimaryProvider()) as LlmProvider;
 
-  const withKeys = (list: LlmProvider[]): LlmProvider[] => {
-    const valid = list.filter((p) => (p === "gemini" ? hasGeminiCredentials() : p === "openrouter" ? hasOpenRouterCredentials() : true));
-    if (!valid.includes("pollinations")) valid.push("pollinations");
-    return valid;
-  };
+  let chain: LlmProvider[];
+  if (mode === "groq") {
+    chain = ["groq", "openrouter", "gemini"];
+  } else if (mode === "gemini") {
+    chain = ["gemini", "groq", "openrouter"];
+  } else if (mode === "openrouter") {
+    chain = ["openrouter", "groq", "gemini"];
+  } else {
+    const rest = (["groq", "openrouter", "gemini"] as LlmProvider[]).filter((p) => p !== primary);
+    chain = [primary, ...rest];
+  }
 
-  if (mode === "gemini") return withKeys(["gemini", "openrouter"]);
-  if (mode === "openrouter") return withKeys(["openrouter", "gemini"]);
+  return [...new Set(chain)].filter(providerAvailable);
+}
 
-  return withKeys([primary, secondary]);
+/** Groq — primary fast inference (OpenAI-compatible API). */
+export async function generateViaGroq(promptText: string): Promise<string> {
+  const apiKey = process.env.GROQ_API_KEY?.trim();
+  if (!apiKey) throw new Error("GROQ_API_KEY not set in cloud-run/.env");
+
+  let lastErr = "";
+  for (const model of groqModelsToTry()) {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are AEGIS Pakistan crisis-management AI. Reply with ONE valid JSON object only. No markdown fences, no commentary.",
+          },
+          { role: "user", content: promptText },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: maxOutputTokens(),
+        temperature: 0.15,
+      }),
+      signal: AbortSignal.timeout(llmRequestTimeoutMs()),
+    });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      lastErr = `${model}: ${res.status} ${txt.slice(0, 160)}`;
+      if (res.status === 429 || res.status === 404) continue;
+      throw new Error(`Groq ${res.status}: ${txt.slice(0, 300)}`);
+    }
+
+    const data = (await res.json()) as {
+      choices?: { message?: { content?: string } }[];
+      error?: { message?: string };
+    };
+    if (data.error?.message) {
+      lastErr = data.error.message;
+      continue;
+    }
+    const text = data.choices?.[0]?.message?.content ?? "";
+    if (!text.trim()) {
+      lastErr = `${model}: empty response`;
+      continue;
+    }
+    if (model !== groqModelName()) {
+      console.warn(`[llm:groq] fallback model ${model}`);
+    }
+    return text;
+  }
+
+  throw new Error(`Groq API failed. Last: ${lastErr}`);
 }
 
 async function generateViaGeminiApiKey(promptText: string): Promise<string> {
@@ -88,6 +193,7 @@ async function generateViaGeminiApiKey(promptText: string): Promise<string> {
           temperature: 0.25,
         },
       }),
+      signal: AbortSignal.timeout(llmRequestTimeoutMs()),
     });
 
     if (!res.ok) {
@@ -151,6 +257,7 @@ async function generateViaVertex(promptText: string): Promise<string> {
         temperature: 0.25,
       },
     }),
+    signal: AbortSignal.timeout(llmRequestTimeoutMs()),
   });
 
   if (!res.ok) {
@@ -201,6 +308,7 @@ export async function generateViaOpenRouter(promptText: string): Promise<string>
       max_tokens: maxOutputTokens(),
       temperature: 0.25,
     }),
+    signal: AbortSignal.timeout(llmRequestTimeoutMs()),
   });
 
   if (!res.ok) {
@@ -220,51 +328,8 @@ export async function generateViaOpenRouter(promptText: string): Promise<string>
   return text;
 }
 
-let pollinationsQueue = Promise.resolve<string | void>("");
-
-export async function generateViaPollinations(promptText: string): Promise<string> {
-  const execute = async () => {
-    let lastErr = "";
-    for (let i = 0; i < 5; i++) {
-      const res = await fetch("https://text.pollinations.ai/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [
-            {
-              role: "system",
-              content: "You are a crisis-management AI. Reply with a single valid JSON object only. No markdown, no prose.",
-            },
-            { role: "user", content: promptText },
-          ],
-          jsonMode: true,
-        }),
-      });
-
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        lastErr = `Pollinations API ${res.status}: ${txt.slice(0, 300)}`;
-        if (res.status === 429) {
-          await new Promise(r => setTimeout(r, 3000));
-          continue;
-        }
-        throw new Error(lastErr);
-      }
-
-      const text = await res.text();
-      if (!text.trim()) throw new Error("Pollinations API returned empty response");
-      return text;
-    }
-    throw new Error(lastErr || "Pollinations API failed after retries.");
-  };
-
-  const task = pollinationsQueue.then(() => execute()).catch(() => execute());
-  pollinationsQueue = task.then(() => {}).catch(() => {});
-  return task;
-}
-
 export async function generateRawText(provider: LlmProvider, promptText: string): Promise<string> {
-  if (provider === "pollinations") return generateViaPollinations(promptText);
+  if (provider === "groq") return generateViaGroq(promptText);
   if (provider === "openrouter") return generateViaOpenRouter(promptText);
   return generateViaGemini(promptText);
 }
@@ -275,7 +340,7 @@ export interface GenerateAgentJsonOptions {
 
 /**
  * Call LLM providers in order until JSON parses.
- * On invalid JSON from provider A, automatically tries provider B (e.g. OpenRouter).
+ * Default chain: Groq → OpenRouter → Gemini (when keys are set).
  */
 export async function generateAgentJson(
   promptPayload: unknown,
@@ -286,26 +351,35 @@ export async function generateAgentJson(
 
   if (!providers.length) {
     throw new Error(
-      "No LLM credentials. Set GEMINI_API_KEY and/or OPENROUTER_API_KEY in cloud-run/.env",
+      "No LLM credentials. Set GROQ_API_KEY (recommended), or GEMINI_API_KEY / OPENROUTER_API_KEY in cloud-run/.env",
     );
   }
 
-  let lastErr: Error | null = null;
+  const errors: string[] = [];
   for (const provider of providers) {
+    const t0 = Date.now();
     try {
       const text = await generateRawText(provider, promptText);
       const parsed = parseAgentJsonText(text);
+      const ms = Date.now() - t0;
       if (provider !== providers[0]) {
-        console.log(`[llm] Recovered via ${provider} after primary failure`);
+        console.log(`[llm] Recovered via ${provider} in ${ms}ms`);
+      } else {
+        console.log(`[llm:${provider}] ok ${ms}ms`);
       }
       return parsed;
     } catch (e) {
-      lastErr = e instanceof Error ? e : new Error(String(e));
-      console.warn(`[llm:${provider}]`, lastErr.message.slice(0, 160));
+      const msg = e instanceof Error ? e.message : String(e);
+      errors.push(`${provider}: ${msg.slice(0, 120)}`);
+      console.warn(`[llm:${provider}] ${Date.now() - t0}ms —`, msg.slice(0, 160));
     }
   }
 
-  throw lastErr ?? new Error("LLM request failed");
+  const summary = errors.join(" | ");
+  throw new Error(
+    summary ||
+      "LLM request failed. Set GROQ_API_KEY in cloud-run/.env and restart npm run dev.",
+  );
 }
 
 /** @deprecated Use generateAgentJson — kept for existing imports. */

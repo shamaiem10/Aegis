@@ -1,16 +1,20 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.parseGeminiJsonText = exports.parseAgentJsonText = exports.resolveProviderOrder = exports.openRouterModelName = exports.hasOpenRouterCredentials = exports.hasGeminiCredentials = exports.gcpRegion = exports.gcpProjectId = exports.geminiModelName = exports.generateViaOpenRouter = exports.generateRawText = exports.generateGeminiJson = exports.generateAgentJson = void 0;
+exports.parseGeminiJsonText = exports.parseAgentJsonText = exports.resolveProviderOrder = exports.openRouterModelName = exports.hasOpenRouterCredentials = exports.hasGroqCredentials = exports.hasGeminiCredentials = exports.gcpRegion = exports.gcpProjectId = exports.groqModelName = exports.geminiModelName = exports.agentLlmProviders = exports.generateViaOpenRouter = exports.generateViaGroq = exports.generateRawText = exports.generateGeminiJson = exports.generateAgentJson = void 0;
 /** Back-compat re-exports — agents should import from llmGenerate. */
 var llmGenerate_1 = require("./llmGenerate");
 Object.defineProperty(exports, "generateAgentJson", { enumerable: true, get: function () { return llmGenerate_1.generateAgentJson; } });
 Object.defineProperty(exports, "generateGeminiJson", { enumerable: true, get: function () { return llmGenerate_1.generateAgentJson; } });
 Object.defineProperty(exports, "generateRawText", { enumerable: true, get: function () { return llmGenerate_1.generateRawText; } });
+Object.defineProperty(exports, "generateViaGroq", { enumerable: true, get: function () { return llmGenerate_1.generateViaGroq; } });
 Object.defineProperty(exports, "generateViaOpenRouter", { enumerable: true, get: function () { return llmGenerate_1.generateViaOpenRouter; } });
+Object.defineProperty(exports, "agentLlmProviders", { enumerable: true, get: function () { return llmGenerate_1.agentLlmProviders; } });
 Object.defineProperty(exports, "geminiModelName", { enumerable: true, get: function () { return llmGenerate_1.geminiModelName; } });
+Object.defineProperty(exports, "groqModelName", { enumerable: true, get: function () { return llmGenerate_1.groqModelName; } });
 Object.defineProperty(exports, "gcpProjectId", { enumerable: true, get: function () { return llmGenerate_1.gcpProjectId; } });
 Object.defineProperty(exports, "gcpRegion", { enumerable: true, get: function () { return llmGenerate_1.gcpRegion; } });
 Object.defineProperty(exports, "hasGeminiCredentials", { enumerable: true, get: function () { return llmGenerate_1.hasGeminiCredentials; } });
+Object.defineProperty(exports, "hasGroqCredentials", { enumerable: true, get: function () { return llmGenerate_1.hasGroqCredentials; } });
 Object.defineProperty(exports, "hasOpenRouterCredentials", { enumerable: true, get: function () { return llmGenerate_1.hasOpenRouterCredentials; } });
 Object.defineProperty(exports, "openRouterModelName", { enumerable: true, get: function () { return llmGenerate_1.openRouterModelName; } });
 Object.defineProperty(exports, "resolveProviderOrder", { enumerable: true, get: function () { return llmGenerate_1.resolveProviderOrder; } });

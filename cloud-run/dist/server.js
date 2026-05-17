@@ -18,6 +18,10 @@ const traffic_1 = require("./apis/traffic");
 const dispatch_1 = require("./alerts/dispatch");
 const agents_1 = __importDefault(require("./routes/agents"));
 const resources_1 = __importDefault(require("./routes/resources"));
+const crises_1 = __importDefault(require("./routes/crises"));
+const download_1 = __importDefault(require("./routes/download"));
+const crisisResourceAllocation_1 = require("./services/crisisResourceAllocation");
+const crisisMaterialize_1 = require("./services/crisisMaterialize");
 const firebase_admin_2 = require("./firebase-admin");
 const llmGenerate_1 = require("./antigravity/llmGenerate");
 require("./firebase-admin");
@@ -33,6 +37,9 @@ app.get("/health", (_req, res) => {
         gcloudProjectEnv: process.env.GCLOUD_PROJECT ?? null,
         llm: {
             providers: (0, llmGenerate_1.resolveProviderOrder)(),
+            primary: process.env.LLM_PRIMARY?.trim() || ((0, llmGenerate_1.hasGroqCredentials)() ? "groq" : "gemini"),
+            groq: (0, llmGenerate_1.hasGroqCredentials)(),
+            groqModel: (0, llmGenerate_1.hasGroqCredentials)() ? (0, llmGenerate_1.groqModelName)() : null,
             gemini: (0, llmGenerate_1.hasGeminiCredentials)(),
             openrouter: (0, llmGenerate_1.hasOpenRouterCredentials)(),
         },
@@ -120,9 +127,15 @@ app.get("/api/v1/crises", async (_req, res, next) => {
 });
 app.get("/api/v1/crises/:id", async (req, res, next) => {
     try {
-        const doc = await firebase_admin_1.db.collection("crises").doc(req.params.id).get();
+        const crisisId = req.params.id;
+        let doc = await firebase_admin_1.db.collection("crises").doc(crisisId).get();
         if (!doc.exists) {
-            res.status(404).json({ success: false, data: null, error: "not_found" });
+            const materialized = await (0, crisisMaterialize_1.materializePkMockCrisisIfMissing)(crisisId);
+            if (!materialized) {
+                res.status(404).json({ success: false, data: null, error: "not_found" });
+                return;
+            }
+            res.json({ success: true, data: materialized.dossier, error: null });
             return;
         }
         const dossier = unwrapDossier(doc.data());
@@ -136,6 +149,27 @@ app.get("/api/v1/crises/:id", async (req, res, next) => {
         next(error);
     }
 });
+const CRISIS_STATUSES = new Set(["active", "monitoring", "resolved", "false_alarm"]);
+app.patch("/api/v1/crises/:id/status", async (req, res, next) => {
+    try {
+        const status = String(req.body?.status ?? "").trim();
+        if (!CRISIS_STATUSES.has(status)) {
+            res.status(400).json({ success: false, data: null, error: "invalid_status" });
+            return;
+        }
+        const updated = await (0, crisisResourceAllocation_1.patchCrisisStatusWithRelease)(req.params.id, status);
+        res.json({ success: true, data: updated, error: null });
+    }
+    catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        if (msg === "crisis_not_found" || msg === "unrecognized_crisis_shape") {
+            res.status(404).json({ success: false, data: null, error: msg });
+            return;
+        }
+        next(error);
+    }
+});
+app.use("/api/v1/crises", crises_1.default);
 app.get("/api/v1/pipeline/latest", async (_req, res, next) => {
     try {
         const latest = await firebase_admin_1.db.doc("pipeline/latest").get();
@@ -241,6 +275,23 @@ app.post("/api/alerts/approve", async (req, res, next) => {
         next(error);
     }
 });
+app.post("/api/alerts/reject", async (req, res, next) => {
+    try {
+        const { alertId } = req.body;
+        if (!alertId) {
+            res.status(400).json({ success: false, data: null, error: "missing_alertId" });
+            return;
+        }
+        await firebase_admin_1.db.collection("alerts").doc(alertId).set({
+            status: "rejected",
+            rejectedAt: new Date().toISOString(),
+        }, { merge: true });
+        res.json({ success: true, data: { alertId, status: "rejected" }, error: null });
+    }
+    catch (error) {
+        next(error);
+    }
+});
 app.post("/api/alerts/send", async (req, res, next) => {
     try {
         const { alertId } = req.body;
@@ -256,6 +307,7 @@ app.post("/api/alerts/send", async (req, res, next) => {
 });
 app.use("/api/v1/agents", agents_1.default);
 app.use("/api/v1/resources", resources_1.default);
+app.use("/download", download_1.default);
 // Global Error Handler
 app.use((err, _req, res, _next) => {
     console.error(err);

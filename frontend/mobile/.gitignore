@@ -42,3 +42,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# release APKs (stage locally; serve via cloud-run /download)
+releases/*.apk

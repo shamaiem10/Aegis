@@ -35,7 +35,14 @@ export default (): ExpoConfig => ({
   web: {
     favicon: "./assets/favicon.png",
   },
+  extra: {
+    eas: {
+      projectId: "acdadc1a-d363-4149-a705-04df75308746",
+    },
+  },
+  owner: "shamaiem",
   plugins: [
+    "expo-font",
     [
       "expo-build-properties",
       {

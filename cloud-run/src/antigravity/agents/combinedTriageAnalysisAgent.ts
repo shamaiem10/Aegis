@@ -1,4 +1,6 @@
-import { generateGeminiJson } from '../geminiGenerate';
+import { agentLlmProviders, generateGeminiJson } from '../geminiGenerate';
+import { runAlertTriageAgent } from './alertTriageAgent';
+import { runCrisisAnalysisAgent } from './crisisAnalysisAgent';
 import type { AlertTriageResult, CrisisAnalysisResult, FlatSignalInput } from './types';
 
 const INSTRUCTION = `AEGIS Pakistan — return compact JSON only:
@@ -12,32 +14,41 @@ export async function runCombinedTriageAnalysisAgent(
   signal: FlatSignalInput,
   crisisId: string,
 ): Promise<{ triage: AlertTriageResult; analysis: CrisisAnalysisResult }> {
-  const parsed = await generateGeminiJson({
-    instruction: INSTRUCTION,
-    input: { signal, crisisId },
-  });
+  const degraded: string[] = [];
+  try {
+    const parsed = await generateGeminiJson(
+      { instruction: INSTRUCTION, input: { signal, crisisId } },
+      { providers: agentLlmProviders() },
+    );
 
-  const triage = parsed.triage as AlertTriageResult | undefined;
-  const analysis = parsed.analysis as CrisisAnalysisResult | undefined;
-  if (!triage?.signalId || !analysis?.crisisId) {
-    throw new Error('CombinedTriageAnalysisAgent incomplete JSON');
+    const triage = parsed.triage as AlertTriageResult | undefined;
+    const analysis = parsed.analysis as CrisisAnalysisResult | undefined;
+    if (!triage?.signalId || !analysis?.crisisId) {
+      throw new Error('CombinedTriageAnalysisAgent incomplete JSON');
+    }
+
+    return {
+      triage: {
+        ...triage,
+        signalId: signal.id,
+        degradedMode: false,
+        generatedAt: now(),
+        agentName: 'CombinedTriageAnalysisAgent',
+      },
+      analysis: {
+        ...analysis,
+        crisisId,
+        signalId: signal.id,
+        degradedMode: false,
+        generatedAt: now(),
+        agentName: 'CombinedTriageAnalysisAgent',
+      },
+    };
+  } catch (e) {
+    console.warn('[CombinedTriageAnalysisAgent] LLM failed, sequential fallback:', (e as Error).message);
+    degraded.push('CombinedTriageAnalysisAgent');
+    const triage = await runAlertTriageAgent(signal, degraded);
+    const analysis = await runCrisisAnalysisAgent(signal, crisisId, degraded);
+    return { triage, analysis };
   }
-
-  return {
-    triage: {
-      ...triage,
-      signalId: signal.id,
-      degradedMode: false,
-      generatedAt: now(),
-      agentName: 'CombinedTriageAnalysisAgent',
-    },
-    analysis: {
-      ...analysis,
-      crisisId,
-      signalId: signal.id,
-      degradedMode: false,
-      generatedAt: now(),
-      agentName: 'CombinedTriageAnalysisAgent',
-    },
-  };
 }

@@ -1,6 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.runRuleBasedFallback = runRuleBasedFallback;
+const falseAlarmAgent_1 = require("./falseAlarmAgent");
+const stakeholderAlertAgent_1 = require("./stakeholderAlertAgent");
 function categoryFromSignal(s) {
     const mock = s.payload?.mock_category || '';
     if (mock)
@@ -203,12 +205,34 @@ function runRuleBasedFallback(agentName, payload) {
         return { allocations: [], shortages: [], tradeoffs: [], note: 'rule-based fallback active' };
     }
     if (agentName === 'FalseAlarmAgent') {
+        const input = (payload.input ?? {});
+        const signals = (input.signals ?? input.fusedSignals ?? []);
+        if (signals.length) {
+            const result = (0, falseAlarmAgent_1.buildFalseAlarmScreenResult)((0, falseAlarmAgent_1.ruleBasedFalseAlarmChecks)(signals), ['FalseAlarmAgent']);
+            return {
+                checks: result.checks,
+                falseAlarmChecks: result.checks.map((c) => ({
+                    crisisId: c.crisisId,
+                    signalId: c.signalId,
+                    recommendedAction: c.recommendedAction,
+                    reason: c.reason,
+                })),
+                note: 'rule-based fallback active',
+            };
+        }
         return { falseAlarmChecks: [], note: 'rule-based fallback active' };
     }
     if (agentName === 'CompoundRiskAgent') {
         return { compoundRisks: [], note: 'rule-based fallback active' };
     }
     if (agentName === 'StakeholderAlertAgent') {
+        const input = (payload.input ?? {});
+        const signal = (input.focusSignal ?? input.signal);
+        if (signal?.id) {
+            const crisisId = signal.id.startsWith('pk-') ? signal.id : `pk-${signal.id}`;
+            const drafts = (0, stakeholderAlertAgent_1.ruleBasedStakeholderDrafts)(signal, crisisId);
+            return { alertDrafts: drafts, note: 'rule-based fallback active' };
+        }
         return { alertDrafts: [], note: 'rule-based fallback active' };
     }
     if (agentName === 'CombinedOrchestrationAgent') {

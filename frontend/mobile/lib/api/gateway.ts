@@ -38,3 +38,23 @@ export async function approveAndDispatchAlert(alertId: string) {
 
   return await res.json();
 }
+
+export async function rejectStakeholderAlert(alertId: string) {
+  const base = await getApiBase();
+  const res = await fetch(`${base}/api/alerts/reject`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ alertId }),
+  });
+  if (!res.ok) {
+    let errText = await res.text();
+    try {
+      const j = JSON.parse(errText);
+      if (j.error) errText = j.error;
+    } catch {
+      /* keep raw */
+    }
+    throw new Error(`Failed to reject alert: ${errText}`);
+  }
+  return (await res.json()) as { success: boolean };
+}

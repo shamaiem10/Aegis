@@ -25,8 +25,13 @@ export function friendlyPipelineError(message: string): string {
   if (/GEMINI|429|quota|API key/i.test(m)) {
     return `Gemini AI error — check GEMINI_API_KEY and GEMINI_VERTEX_MODEL in cloud-run/.env, then restart the server. (${m.slice(0, 120)})`;
   }
-  if (/abort|timed out|no response|network/i.test(m)) {
-    return "Could not reach Cloud Run on port 8080. Same Wi‑Fi, correct LAN IP in Settings, and npm run dev with firewall open.";
+  if (/abort|timed out|no response|network|fetch failed|ECONNREFUSED|Failed to connect/i.test(m)) {
+    return (
+      "Cannot reach Cloud Run (:8080). On PC: cd cloud-run && npm run dev. " +
+      "Phone browser: open http://YOUR_PC_IP:8080/health (must show JSON). " +
+      "Campus Wi‑Fi often blocks phone→PC — use USB: scripts/android-usb-api.ps1 then EXPO_PUBLIC_API_URL=http://127.0.0.1:8080. " +
+      "Or run cloud-run/scripts/allow-firewall-8080.ps1 as Admin."
+    );
   }
   if (m.length > 320) return `${m.slice(0, 317)}…`;
   return m;

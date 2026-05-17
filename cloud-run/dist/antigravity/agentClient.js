@@ -31,10 +31,11 @@ async function callAntigravityAgent(agentName, instruction, inputData, degradedA
     const compactSuffix = '\nOUTPUT RULES: max 2 incidents, minified JSON, every string under 80 chars, omit empty arrays.';
     try {
         let parsed = await (0, llmGenerate_1.generateAgentJson)(payload);
-        if (agentName === 'CombinedOrchestrationAgent' &&
-            !Array.isArray(parsed.incidents) &&
-            (0, llmGenerate_1.hasOpenRouterCredentials)()) {
-            parsed = await (0, llmGenerate_1.generateAgentJson)({ instruction: `${instruction}${compactSuffix}`, input: inputData }, { providers: ['openrouter'] });
+        if (agentName === 'CombinedOrchestrationAgent' && !Array.isArray(parsed.incidents)) {
+            const retryProviders = ['groq', 'openrouter', 'gemini'].filter((p) => p === 'groq' ? (0, llmGenerate_1.hasGroqCredentials)() : p === 'openrouter' ? (0, llmGenerate_1.hasOpenRouterCredentials)() : true);
+            if (retryProviders.length) {
+                parsed = await (0, llmGenerate_1.generateAgentJson)({ instruction: `${instruction}${compactSuffix}`, input: inputData }, { providers: retryProviders });
+            }
         }
         const latencyMs = Date.now() - startTime;
         await safeTraceWrite(agentName, payload, parsed, latencyMs);
@@ -56,12 +57,19 @@ async function callAntigravityAgent(agentName, instruction, inputData, degradedA
         catch {
             /* local dev without Firestore creds */
         }
+        // Always allow rule-based fallback so mobile never hits Pollinations/429 dead-ends.
+        const fallback = (0, fallbacks_1.runRuleBasedFallback)(agentName, payload);
         if (exports.LIVE_ONLY_AGENTS.has(agentName)) {
-            const hint = (0, llmGenerate_1.hasOpenRouterCredentials)()
-                ? 'Check GEMINI_API_KEY / OPENROUTER_API_KEY and model names in cloud-run/.env.'
-                : 'Set GEMINI_API_KEY or OPENROUTER_API_KEY in cloud-run/.env.';
-            throw new Error(`[${agentName}] ${message}. ${hint}`);
+            const triage = fallback.triage;
+            const analysis = fallback.analysis;
+            const plan = fallback.actionPlan;
+            if (triage)
+                triage.degradedMode = true;
+            if (analysis)
+                analysis.degradedMode = true;
+            if (plan)
+                plan.degradedMode = true;
         }
-        return (0, fallbacks_1.runRuleBasedFallback)(agentName, payload);
+        return fallback;
     }
 }
